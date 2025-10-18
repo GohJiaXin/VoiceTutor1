@@ -834,8 +834,19 @@ class VoiceTutor {
         }
     }
 
-    clearConversation() {
+    async clearConversation() {
         if (!this.elements.conversationContainer) return;
+        
+        // Clear Mem0 memory
+        try {
+            await fetch('/api/memory/clear', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId: this.sessionId })
+            });
+        } catch (error) {
+            console.error('Error clearing memory:', error);
+        }
         
         this.elements.conversationContainer.innerHTML = `
             <div class="alert alert-light border text-center">
@@ -855,7 +866,7 @@ class VoiceTutor {
             lastQuestion: null
         };
         
-        this.setStatus('Chat cleared. Interactive learning ready!', 'info');
+        this.setStatus('🧠 Chat and memory cleared. Interactive learning ready!', 'info');
     }
 
     // NEW: Get conversation state from server

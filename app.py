@@ -1,290 +1,403 @@
+'''
+    Main Flask app, route definitions, Groq tool handling
+'''
+
+import os
+import json
+import base64
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from groq import Groq
-import os
 from dotenv import load_dotenv
-import base64
-import requests
-from mem0 import Memory
-import uuid
-from datetime import datetime
+import requests # Still needed for local service calls and memory curation
 
+# Third-party Libraries
+from groq import Groq
+from mem0 import Memory
+
+# Import service functions from the new directory
+from services.elevenlabs_tts import synthesize_speech
+from services.fal_ai_generator import generate_visual_aid
+
+# --- Configuration and Initialization ---
 load_dotenv()
 
 app = Flask(__name__, static_folder='public')
-CORS(app)
+CORS(app) # Enable CORS for frontend
 
-# Service Initialization
+# --- API Key Checks ---
+GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+MEM0_API_KEY = os.getenv('MEM0_API_KEY')
+
 groq_client = None
+if GROQ_API_KEY:
+    groq_client = Groq(api_key=GROQ_API_KEY)
+else:
+    print("WARNING: GROQ_API_KEY not found. AI features will be disabled.")
+
 memory = None
+if MEM0_API_KEY:
+    try:
+        print(f"Attempting to initialize Memory with MEM0_API_KEY: {MEM0_API_KEY[:10]}...")
+        print(f"OpenAI API Key available: {bool(os.getenv('OPENAI_API_KEY'))}")
+        
+        # Try different initialization methods
+        try:
+            # Method 1: Default initialization
+            memory = Memory()
+            print("Memory service initialized successfully with default config.")
+        except Exception as e1:
+            print(f"Default init failed: {e1}")
+            try:
+                # Method 2: With explicit config
+                config = {
+                    "vector_store": {
+                        "provider": "qdrant",
+                        "config": {
+                            "collection_name": "voicetutor",
+                            "host": "localhost",
+                            "port": 6333
+                        }
+                    }
+                }
+                memory = Memory.from_config(config)
+                print("Memory service initialized with custom config.")
+            except Exception as e2:
+                print(f"Custom config init failed: {e2}")
+                # Method 3: Disable memory for now
+                memory = None
+                print("Memory initialization failed completely. Continuing without memory.")
+                
+    except Exception as e:
+        print(f"WARNING: Memory initialization failed: {e}. Memory features will be disabled.")
+        memory = None
+else:
+    print("WARNING: MEM0_API_KEY not found. Memory features will be disabled.")
+
+
+# Conversation State Management
 conversation_states = {}
 
-try:
-    if os.getenv('GROQ_API_KEY'):
-        groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
-        print("✅ Groq initialized successfully")
-    else:
-        print("⚠️  GROQ_API_KEY not found. AI responses will not work.")
-
-    if os.getenv('MEM0_API_KEY'):
-        memory = Memory(api_key=os.getenv('MEM0_API_KEY'))
-        print("✅ Mem0 initialized successfully")
-    else:
-        print("⚠️  MEM0_API_KEY not found. Memory features disabled.")
-        
-except Exception as error:
-    print(f"Error initializing services: {error}")
-
-# System Prompts
-SYSTEM_PROMPTS = {
-    "default": """You are VoiceTutor, an enthusiastic and expert AI study assistant. Your role is to:
-
-1. EXPLAIN concepts clearly and conversationally in 2-3 sentences
-2. BREAK DOWN complex topics into simple, digestible parts
-3. ALWAYS end by confirming understanding with phrases like "Does this make sense to you?" or "Do you feel like you've got it now?"
-4. USE encouraging and supportive language
-5. ADAPT to the user's learning level
-6. KEEP responses concise for voice interaction
-
-Example format:
-"Great question! [Clear explanation]. Does this make sense to you, or would you like me to explain it differently?" """,
-
-    "interactive": """You are VoiceTutor, a conversational AI learning partner designed for voice-first interaction. You create dynamic, Socratic dialogue that goes far beyond rigid text responses.
-
-CORE PHILOSOPHY:
-- You are a conversational partner, not a textbook
-- Every interaction flows naturally like a real conversation
-- You adapt your teaching style to the learner's voice and responses
-- You create genuine teaching moments through dialogue, not data dumps
-
-CONVERSATIONAL TEACHING STYLE:
-1. SPEAK NATURALLY: Use conversational language, not academic bullet points
-2. BUILD ON RESPONSES: Always acknowledge what the learner said before continuing
-3. USE ANALOGIES: Connect complex concepts to familiar experiences
-4. CREATE DIALOGUE: Ask follow-up questions that feel natural in conversation
-
-TONE: Conversational, enthusiastic, patient, curious. Like talking to a knowledgeable friend who loves teaching."""
+# --- AI Tool Definition (for Groq) ---
+VISUAL_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "generate_visual_aid",
+        "description": "Call this to generate a diagram, graph, or analogy image for a user when explaining a complex concept for the first time or when requested.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "concept_text": {
+                    "type": "string",
+                    "description": "The exact explanation text the image should illustrate. Must be a complete, clear sentence from the AI's explanation."
+                }
+            },
+            "required": ["concept_text"]
+        }
+    }
 }
 
+# --- System Prompts (Tailored for Interactive Tutoring) ---
+SYSTEM_PROMPT_INTERACTIVE = """
+You are VoiceTutor, an enthusiastic, expert AI study assistant designed for voice-first interaction.
+Your persona is a friendly, Socratic dialogue partner.
+GOAL: Explain concepts clearly, then immediately ask a thought-provoking, specific question to assess user understanding or deepen the conversation.
+STYLE GUIDE:
+1. Speak naturally, acknowledging previous user input.
+2. Use analogies to simplify complex topics.
+3. Your final sentence must always be a question or a challenge.
+4. **DO NOT** use phrases like "Does this make sense?" or "Do you understand?". Ask a direct question about the material, for example: "How might the lack of chlorophyll impact a plant's energy source?"
+
+Available Tools:
+- You have the ability to generate a visual aid using the 'generate_visual_aid' tool.
+- Use this tool when you introduce a complex topic and believe a visual diagram or analogy would significantly aid understanding.
+"""
+
+
+# --- Utility Functions ---
+
 def get_conversation_state(session_id):
+    """Retrieves or initializes the state for a given session."""
     if session_id not in conversation_states:
         conversation_states[session_id] = {
-            'mode': 'interactive',
-            'current_topic': None,
-            'question_history': [],
-            'user_responses': [],
-            'learning_level': 'beginner',
+            'level': 'beginner',
+            'history': [],
             'waiting_for_response': False,
             'last_question': None,
-            'last_response': None
+            'last_response': None,
+            'user_responses': []
         }
     return conversation_states[session_id]
 
+def update_system_prompt(state, message):
+    """Dynamically updates the system prompt based on conversation flow."""
+    current_prompt = SYSTEM_PROMPT_INTERACTIVE
+    
+    # 1. Add Memory Context
+    relevant_memories = ""
+    if memory:
+        try:
+            # Search memory for relevant past learning points
+            search_results = memory.search(message, user_id=state['history'][0].get('id', 'default_user'))
+            if search_results:
+                memory_texts = [res['data'] for res in search_results]
+                relevant_memories = "\nRELEVANT MEMORIES (User's Past Learning Points):\n" + "\n".join(memory_texts)
+        except Exception as e:
+            print(f"Memory search failed: {e}")
+    else:
+        print("Skipping memory search - memory service not available")
+
+    # 2. Add Context for back-to-back dialogue
+    dialogue_context = ""
+    if state['waiting_for_response'] and state['last_question']:
+        # If the user is responding to the AI's previous question
+        dialogue_context = (
+            f"\n\nUSER'S TASK: The user is now responding to your previous question. "
+            f"Your LAST QUESTION WAS: '{state['last_question']}'. "
+            f"The user's CURRENT MESSAGE is their answer. "
+            f"Acknowledge their answer, correct or elaborate as necessary, and then continue the Socratic dialogue with a new, related question."
+        )
+        state['waiting_for_response'] = False # Reset flag after using context
+    else:
+        # User is starting a new topic or asking a new question
+        state['waiting_for_response'] = True
+        dialogue_context = "\n\nUSER'S TASK: The user is asking a new question or continuing the topic. Provide a comprehensive explanation followed by a new, specific question."
+
+
+    return current_prompt + dialogue_context + relevant_memories
+
+
+# --- API Endpoints ---
+
 @app.route('/api/chat', methods=['POST'])
 def chat():
+    if not groq_client:
+        return jsonify({'error': 'AI services not configured.'}), 503
+
     try:
-        data = request.json
-        message = data.get('message')
-        session_id = data.get('sessionId', str(uuid.uuid4()))
-        is_response = data.get('isResponse', False)
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Invalid JSON data'}), 400
+        message = data.get('message', '')
+        session_id = data.get('sessionId', 'default_session')
         
-        if not message:
-            return jsonify({'error': 'No message provided'}), 400
-
-        if not groq_client:
-            return jsonify({
-                'error': 'AI service unavailable',
-                'response': "I'm sorry, but the AI service is currently unavailable."
-            }), 503
-
         state = get_conversation_state(session_id)
         
-        # Get memories from Mem0
-        memory_context = ""
-        if memory:
-            try:
-                memories = memory.search(message, user_id=session_id)
-                if memories:
-                    memory_context = "\n\nRELEVANT MEMORIES:\n" + "\n".join([m['memory'] for m in memories])
-            except Exception as e:
-                print(f"Memory search failed: {e}")
-
-        # Prepare system prompt
-        system_prompt = SYSTEM_PROMPTS['interactive'] + memory_context
+        # 1. Update System Prompt with Memory and Dialogue Context
+        system_prompt = update_system_prompt(state, message)
         
-        if is_response and state['waiting_for_response']:
-            system_prompt += f"\n\nCONTEXT: You just asked: \"{state['last_question']}\"\nUser responded: \"{message}\"\n\nNow acknowledge their response and explain the concept using their answer as context."
-            state['user_responses'].append(message)
-            state['waiting_for_response'] = False
-        else:
-            state['question_history'].append(message)
-            state['waiting_for_response'] = True
-            state['last_question'] = message
-
-        # Call Groq API
+        # 2. Prepare Messages and Call Groq
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": message}
+        ]
+        
         completion = groq_client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": message}
-            ],
+            messages=messages,
             model="llama-3.1-8b-instant",
             temperature=0.7,
-            max_tokens=300
+            max_tokens=350,
+            tools=[VISUAL_TOOL]
         )
 
         ai_response = completion.choices[0].message.content
+        image_url = None
+        
+        # 3. Handle Tool Call (Visual Generation)
+        print(f"Finish reason: {completion.choices[0].finish_reason}")
+        print(f"Has tool calls: {hasattr(completion.choices[0].message, 'tool_calls') and completion.choices[0].message.tool_calls}")
+        
+        if completion.choices[0].finish_reason == "tool_calls" and completion.choices[0].message.tool_calls:
+            tool_call = completion.choices[0].message.tool_calls[0]
+            print(f"Tool call detected: {tool_call.function.name}")
+            if tool_call.function.name == "generate_visual_aid":
+                
+                concept_text = json.loads(tool_call.function.arguments)['concept_text']
+                print(f"Generating visual for: {concept_text}")
+                
+                # Use the imported service function
+                image_url, prompt_used_or_error = generate_visual_aid(groq_client, concept_text)
+                
+                print(f"Visual generation result: image_url={image_url}")
+                
+                if image_url:
+                    ai_response = f"Here is the explanation, and I've generated a visual aid to help you understand this concept: {concept_text}"
+                    print(f"SUCCESS: Image will be sent to frontend: {image_url}")
+                else:
+                    ai_response = f"I tried to generate a visual, but the service failed. Here is the explanation: {concept_text}"
+                    print(f"FAILED: Visual generation failed: {prompt_used_or_error}")
+        elif ai_response and "<function=generate_visual_aid>" in ai_response:
+            print("Function call found in text response, processing...")
+            import re
+            match = re.search(r'<function=generate_visual_aid>\{"concept_text":\s*"([^"]+)"\}', ai_response)
+            if match:
+                concept_text = match.group(1)
+                print(f"Extracted concept from text: {concept_text}")
+                
+                image_url, prompt_used_or_error = generate_visual_aid(groq_client, concept_text)
+                
+                if image_url:
+                    ai_response = re.sub(r'<function=generate_visual_aid>.*?>', '', ai_response)
+                    ai_response = f"Here's an explanation with a visual aid: {concept_text}. {ai_response}"
+                    print(f"SUCCESS: Generated image from text: {image_url}")
+                else:
+                    ai_response = re.sub(r'<function=generate_visual_aid>.*?>', '', ai_response)
+                    print(f"FAILED: Visual generation failed: {prompt_used_or_error}")
+        
+        # 4. Save State, Memory, and Prepare Response
+        
+        # Check if the AI's response is a question (for next turn's context)
+        if state['waiting_for_response'] and ai_response.strip().endswith('?'):
+            state['last_question'] = ai_response
+        else:
+            state['last_question'] = None
+            state['waiting_for_response'] = False
+
         state['last_response'] = ai_response
+        state['history'].append({'role': 'user', 'content': message})
+        state['history'].append({'role': 'assistant', 'content': ai_response})
 
-        # Store in Mem0
-        if memory:
+        # --- Memory Curation (Skip if memory not available) ---
+        if memory and ai_response:
             try:
-                memory.add(message, user_id=session_id)
-                memory.add(ai_response, user_id=session_id)
+                # Ask Groq to summarize the key learning point (lightweight, low temp)
+                summary_completion = groq_client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": "Condense the following explanation into a single, succinct knowledge sentence for long-term memory storage."},
+                        {"role": "user", "content": ai_response}
+                    ],
+                    model="llama-3.1-8b-instant",
+                    temperature=0.1,
+                    max_tokens=50
+                )
+                curated_memory = summary_completion.choices[0].message.content
+                
+                # Store the curated point
+                memory.add(curated_memory, user_id=session_id, metadata={"type": "learning_point"})
+                print(f"Memory stored: {curated_memory[:50]}...")
+                
             except Exception as e:
-                print(f"Memory storage failed: {e}")
+                print(f"Memory curation failed: {e}")
+        elif not memory:
+            print("Skipping memory storage - memory service not available")
 
-        return jsonify({
+        response_data = {
             'response': ai_response,
             'sessionId': session_id,
+            'imageUrl': image_url,
             'waitingForResponse': state['waiting_for_response'],
-            'conversationState': {
-                'mode': state['mode'],
-                'currentTopic': state['current_topic'],
-                'learningLevel': state['learning_level']
-            }
-        })
+            'conversationState': state
+        }
+        print(f"Final response: AI={ai_response[:100]}..., Image={image_url}")
+        print(f"Sending to frontend: imageUrl={image_url}")
+        return jsonify(response_data)
 
     except Exception as error:
-        print(f"Error in /api/chat: {error}")
-        return jsonify({
-            'error': 'Failed to process question',
-            'details': str(error)
-        }), 500
+        print(f"Chat error: {error}")
+        return jsonify({'error': f'An unexpected error occurred: {error}'}), 500
+
 
 @app.route('/api/synthesize-speech', methods=['POST'])
-def synthesize_speech():
+def api_synthesize_speech():
+    """Endpoint for TTS, using the imported ElevenLabs service function."""
     try:
-        data = request.json
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Invalid JSON data'}), 400
         text = data.get('text')
         
         if not text:
             return jsonify({'error': 'No text provided'}), 400
 
-        # Use browser TTS fallback
+        # Use the imported service function
+        audio_content, mime_type, message = synthesize_speech(text)
+        
         return jsonify({
-            'audioContent': None,
-            'mimeType': 'audio/mpeg',
-            'message': 'Use browser TTS'
+            'audioContent': audio_content, 
+            'mimeType': mime_type, 
+            'message': message
         })
 
     except Exception as error:
         print(f"Speech synthesis error: {error}")
-        return jsonify({
-            'audioContent': None,
-            'mimeType': 'audio/mpeg',
-            'message': 'Using browser TTS fallback'
-        })
+        return jsonify({'audioContent': None, 'mimeType': 'audio/mpeg', 'message': 'TTS exception, falling back to browser TTS'}), 500
+
+
+# --- Utility Endpoints ---
 
 @app.route('/api/memory/clear', methods=['POST'])
 def clear_memory():
-    try:
-        data = request.json
-        session_id = data.get('sessionId')
-        
-        if not session_id:
-            return jsonify({'error': 'Session ID required'}), 400
+    if not memory:
+        return jsonify({'message': 'Memory service not configured. Session reset locally.'}), 200
 
-        if memory:
-            memory.delete_all(user_id=session_id)
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Invalid JSON data'}), 400
+            
+        session_id = data.get('sessionId', 'default_session')
         
-        # Clear conversation state
+        # Delete from Mem0
+        memory.delete_all(user_id=session_id)
+        
+        # Delete from local state
         if session_id in conversation_states:
             del conversation_states[session_id]
-        
-        return jsonify({'success': True, 'message': 'Memory cleared successfully'})
-    
-    except Exception as error:
-        print(f"Error clearing memory: {error}")
-        return jsonify({'error': 'Failed to clear memory'}), 500
 
-@app.route('/api/rephrase', methods=['POST'])
-def rephrase():
-    try:
-        data = request.json
-        last_response = data.get('lastResponse')
-        
-        if not last_response or not groq_client:
-            return jsonify({'error': 'Invalid request'}), 400
-
-        completion = groq_client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": "Rephrase the following explanation in a different way, keeping it concise and easy to understand."},
-                {"role": "user", "content": f"Rephrase: {last_response}"}
-            ],
-            model="llama-3.1-8b-instant",
-            temperature=0.8,
-            max_tokens=300
-        )
-
-        return jsonify({'response': completion.choices[0].message.content})
-
-    except Exception as error:
-        return jsonify({'error': 'Failed to rephrase'}), 500
-
-@app.route('/api/example', methods=['POST'])
-def example():
-    try:
-        data = request.json
-        last_response = data.get('lastResponse')
-        
-        if not last_response or not groq_client:
-            return jsonify({'error': 'Invalid request'}), 400
-
-        completion = groq_client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": "Provide a clear, practical example that illustrates this concept."},
-                {"role": "user", "content": f"Give example for: {last_response}"}
-            ],
-            model="llama-3.1-8b-instant",
-            temperature=0.7,
-            max_tokens=300
-        )
-
-        return jsonify({'response': completion.choices[0].message.content})
-
-    except Exception as error:
-        return jsonify({'error': 'Failed to generate example'}), 500
+        return jsonify({'message': f'Conversation memory and state cleared for session {session_id}.'}), 200
+    except Exception as e:
+        return jsonify({'error': f'Failed to clear memory: {e}'}), 500
 
 @app.route('/api/health')
-def health():
+def health_check():
+    """Simple health check endpoint."""
     return jsonify({
-        'status': 'OK',
-        'timestamp': datetime.now().isoformat(),
-        'services': {
-            'groq': bool(os.getenv('GROQ_API_KEY')),
-            'mem0': bool(os.getenv('MEM0_API_KEY'))
-        }
+        'status': 'ok',
+        'timestamp': int(os.environ.get('PORT', 3000)),
+        'groq_configured': bool(GROQ_API_KEY),
+        'mem0_configured': bool(MEM0_API_KEY),
+        'memory_active': bool(memory),
+        'elevenlabs_configured': bool(os.getenv('ELEVENLABS_API_KEY')),
+        'fal_ai_configured': bool(os.getenv('FAL_AI_API_KEY'))
     })
 
+@app.route('/api/memory/status/<session_id>')
+def memory_status(session_id):
+    """Check memory status for a session."""
+    if not memory:
+        return jsonify({
+            'memory_available': False,
+            'message': 'Memory service not available - app running without persistent memory',
+            'session_id': session_id
+        })
+    
+    try:
+        # Get all memories for this user
+        memories = memory.get_all(user_id=session_id)
+        return jsonify({
+            'memory_available': True,
+            'memory_count': len(memories) if memories else 0,
+            'memories': memories[:5] if memories else [],  # Show first 5
+            'session_id': session_id
+        })
+    except Exception as e:
+        return jsonify({
+            'memory_available': False,
+            'error': f'Memory check failed: {e}',
+            'session_id': session_id
+        }), 500
+
+# --- Frontend Serving ---
+
 @app.route('/')
-def serve_frontend():
-    return send_from_directory('public', 'index.html')
+def index():
+    return send_from_directory(app.static_folder, 'index.html')
 
 @app.route('/<path:filename>')
 def serve_static(filename):
-    return send_from_directory('public', filename)
+    return send_from_directory(app.static_folder, filename)
 
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 3000))
-    print(f"🚀 VoiceTutor Python running on http://localhost:{port}")
-    print(f"📊 Health check: http://localhost:{port}/api/health")
-    
-    if not os.getenv('GROQ_API_KEY'):
-        print('⚠️  GROQ_API_KEY not found. AI responses will not work.')
-    
-    if not os.getenv('MEM0_API_KEY'):
-        print('⚠️  MEM0_API_KEY not found. Memory features disabled.')
-    else:
-        print('✅ Mem0 API key found')
-    
-    app.run(host='0.0.0.0', port=port, debug=True)
+    # Default to 3000 if not specified
+    port = int(os.environ.get('PORT', 3000)) 
+    # Use a secure way to run in production, but for development:
+    app.run(debug=True, port=port)

@@ -325,6 +325,10 @@ class VoiceTutor {
             case 'resumeSpeech':
                 this.resumeSpeech();
                 return true;
+                
+            case 'checkMemory':
+                this.checkMemoryStatus();
+                return true;
         }
         return false;
     }
@@ -530,7 +534,9 @@ class VoiceTutor {
                 }
                 
                 this.lastAIResponse = response.response;
-                this.addMessage('ai', response.response);
+                console.log('Received response from backend:', response);
+                console.log('Image URL received:', response.imageUrl);
+                this.addMessage('ai', response.response, response.imageUrl);
                 
                 // Update conversation state
                 if (response.conversationState) {
@@ -733,7 +739,7 @@ class VoiceTutor {
         speechSynthesis.speak(utterance);
     }
 
-    addMessage(sender, text) {
+    addMessage(sender, text, imageUrl = null) {
         if (!this.elements.conversationContainer) return;
 
         // Remove welcome message if it exists
@@ -744,9 +750,17 @@ class VoiceTutor {
 
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${sender}-message`;
+        
+        let imageHtml = '';
+        if (imageUrl && sender === 'ai') {
+            console.log('Adding image to message:', imageUrl);
+            imageHtml = `<div class="message-image mt-2"><img src="${imageUrl}" alt="Visual aid" class="img-fluid rounded" style="max-width: 300px; max-height: 300px;" onerror="console.error('Image failed to load:', this.src)"></div>`;
+        }
+        
         messageDiv.innerHTML = `
             <div class="message-sender">${sender === 'user' ? 'You' : 'Tutor'}</div>
             <div class="message-text">${this.escapeHtml(text)}</div>
+            ${imageHtml}
             <div class="message-time">${new Date().toLocaleTimeString()}</div>
         `;
         
@@ -867,6 +881,23 @@ class VoiceTutor {
         };
         
         this.setStatus('🧠 Chat and memory cleared. Interactive learning ready!', 'info');
+    }
+
+    async checkMemoryStatus() {
+        try {
+            const response = await fetch(`/api/memory/status/${this.sessionId}`);
+            if (response.ok) {
+                const data = await response.json();
+                const memoryInfo = `🧠 Memory Status: ${data.memory_count} stored memories`;
+                this.addMessage('ai', memoryInfo);
+                this.setStatus('Memory status checked', 'success');
+            } else {
+                this.addMessage('ai', '🧠 Memory service not available');
+            }
+        } catch (error) {
+            console.error('Memory check error:', error);
+            this.addMessage('ai', '🧠 Error checking memory status');
+        }
     }
 
     // NEW: Get conversation state from server

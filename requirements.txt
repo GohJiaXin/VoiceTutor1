@@ -1,6 +1,9 @@
-flask==3.0.0
-flask-cors==4.0.0
-groq==0.4.1
-python-dotenv==1.0.0
-mem0ai==0.0.8
-requests==2.31.0
+# Python dependencies (flask, groq, mem0, requests, etc.)
+
+flask
+flask-cors
+groq
+python-dotenv
+mem0
+requests  # For making calls to ElevenLabs and Fal.ai
+# (or use specific client libraries if provided by Fal/ElevenLabs)

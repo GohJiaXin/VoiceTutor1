@@ -3,113 +3,116 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VoiceTutor - AI Study Assistant</title>
-    <!-- Bootstrap 5 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
-    <!-- Custom CSS -->
-    <link rel="stylesheet" href="style.css">
+    <title>VoiceTutor - AI Learning Assistant</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="styles.css" rel="stylesheet">
 </head>
-<body class="bg-light">
-    <div class="container-fluid min-vh-100 d-flex flex-column">
-        
-        <!-- Header -->
-        <header class="py-4 text-center text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-            <div class="container">
-                <h1 class="display-4 fw-bold mb-2">
-                    <i class="bi bi-mic-fill me-3"></i>VoiceTutor
-                </h1>
-                <p class="lead mb-0 opacity-75">Your AI-Powered Study Companion</p>
-            </div>
-        </header>
+<body>
+    <div class="container-fluid vh-100">
+        <div class="row h-100">
+            <!-- Main Content -->
+            <div class="col-md-8 d-flex flex-column">
+                <!-- Header -->
+                <header class="bg-primary text-white p-3 shadow-sm">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h1 class="h3 mb-0">
+                            <i class="bi bi-mic-fill me-2"></i>VoiceTutor
+                        </h1>
+                        <div class="text-end">
+                            <div class="mb-2">
+                                <select id="languageSelect" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                                    <option value="en-US">🇺🇸 English</option>
+                                    <option value="es-ES">🇪🇸 Español</option>
+                                    <option value="fr-FR">🇫🇷 Français</option>
+                                    <option value="de-DE">🇩🇪 Deutsch</option>
+                                    <option value="zh-CN">🇨🇳 中文</option>
+                                </select>
+                            </div>
+                            <small class="d-block">Session: <span id="sessionId" class="badge bg-light text-dark">Loading...</span></small>
+                        </div>
+                    </div>
+                </header>
 
-        <!-- Main Interface -->
-        <main class="flex-grow-1 py-4">
-            <div class="container">
-                <div class="row justify-content-center">
-                    <div class="col-12 col-lg-10 col-xl-8">
-                        
-                        <!-- Voice Controls Card -->
-                        <div class="card shadow-sm mb-4 border-0">
-                            <div class="card-body text-center p-4">
-                                <h5 class="card-title mb-4 text-primary">
-                                    <i class="bi bi-headphones me-2"></i>Start Your Learning Session
-                                </h5>
-                                
-                                <div class="d-flex flex-column flex-sm-row justify-content-center gap-3 mb-3">
-                                    <button id="startBtn" class="btn btn-success btn-lg px-4 py-3">
-                                        <i class="bi bi-mic-fill me-2"></i>Start Learning
-                                    </button>
-                                    <button id="stopBtn" class="btn btn-danger btn-lg px-4 py-3" disabled>
-                                        <i class="bi bi-stop-fill me-2"></i>Stop
-                                    </button>
-                                </div>
-                                
-                                <div id="status" class="alert alert-info mb-0">
-                                    <i class="bi bi-info-circle me-2"></i>Ready to help you learn!
-                                </div>
+                <!-- Status Bar -->
+                <div class="alert alert-info m-3 mb-0" id="status">
+                    🎯 Ready to help you learn!
+                </div>
+
+                <!-- Conversation Area -->
+                <div class="flex-grow-1 p-3" style="overflow-y: auto;">
+                    <div id="conversationContainer" class="conversation-container">
+                        <div class="alert alert-light border text-center">
+                            <i class="bi bi-lightbulb text-warning me-2"></i>
+                            Start by clicking "Start Learning" and ask your study question!
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Controls -->
+                <div class="p-3 border-top bg-light">
+                    <div class="row g-2">
+                        <div class="col-md-8">
+                            <div class="d-grid gap-2 d-md-flex">
+                                <button id="startBtn" class="btn btn-success btn-lg px-4 py-3">
+                                    <i class="bi bi-mic-fill me-2"></i>Start Learning
+                                </button>
+                                <button id="stopBtn" class="btn btn-secondary btn-lg px-4 py-3" disabled>
+                                    <i class="bi bi-stop-fill me-2"></i>Stop
+                                </button>
                             </div>
                         </div>
-
-                        <!-- Conversation Display Card -->
-                        <div class="card shadow-sm mb-4 border-0">
-                            <div class="card-header bg-white border-0 py-3">
-                                <h5 class="card-title mb-0 text-primary">
-                                    <i class="bi bi-chat-left-text me-2"></i>Conversation
-                                </h5>
-                            </div>
-                            <div class="card-body p-0">
-                                <div id="conversationContainer" class="conversation-container p-4" style="max-height: 400px; overflow-y: auto;">
-                                    <!-- Welcome Message -->
-                                    <div class="alert alert-light border text-center">
-                                        <i class="bi bi-lightbulb text-warning me-2"></i>
-                                        Start by clicking "Start Learning" and ask your study question!
-                                    </div>
-                                </div>
+                        <div class="col-md-4">
+                            <div class="d-grid">
+                                <button id="clearChat" class="btn btn-outline-danger">
+                                    <i class="bi bi-trash me-2"></i>Clear Chat
+                                </button>
                             </div>
                         </div>
-
-                        <!-- Session Info Card -->
-                        <div class="card shadow-sm border-0">
-                            <div class="card-body py-3">
-                                <div class="row align-items-center">
-                                    <div class="col-md-8 mb-2 mb-md-0">
-                                        <small class="text-muted">
-                                            <i class="bi bi-tag me-1"></i>
-                                            Session ID: 
-                                            <span id="sessionId" class="font-monospace text-dark">Not started</span>
-                                        </small>
-                                    </div>
-                                    <div class="col-md-4 text-md-end">
-                                        <button id="clearChat" class="btn btn-outline-secondary btn-sm">
-                                            <i class="bi bi-trash me-1"></i>Clear Chat
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
+                    </div>
+                    <div class="mt-2 text-muted text-center">
+                        <small>Press <kbd>Space</kbd> to start/stop listening</small>
                     </div>
                 </div>
             </div>
-        </main>
 
-        <!-- Footer -->
-        <footer class="py-3 mt-auto text-center text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-            <div class="container">
-                <p class="mb-0">
-                    <i class="bi bi-heart-fill text-danger me-1"></i>
-                    Built for Cursor Hackathon Singapore
-                </p>
+            <!-- Sidebar -->
+            <div class="col-md-4 bg-light border-start p-4">
+                <h5 class="mb-3">
+                    <i class="bi bi-info-circle me-2"></i>Voice Commands
+                </h5>
+                
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <h6 class="card-title">Available Commands:</h6>
+                        <ul class="list-unstyled small">
+                            <li><kbd>"help"</kbd> - Show commands</li>
+                            <li><kbd>"repeat"</kbd> - Repeat last explanation</li>
+                            <li><kbd>"explain differently"</kbd> - Rephrase</li>
+                            <li><kbd>"give me an example"</kbd> - Get examples</li>
+                            <li><kbd>"quiz me"</kbd> - Start quiz</li>
+                            <li><kbd>"clear chat"</kbd> - Clear conversation</li>
+                            <li><kbd>"stop listening"</kbd> - Stop voice</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <h6 class="card-title">Tips:</h6>
+                        <ul class="small">
+                            <li>Speak clearly and at a normal pace</li>
+                            <li>Ask specific questions for better answers</li>
+                            <li>Use voice commands for quick actions</li>
+                            <li>Works best in Chrome browser</li>
+                        </ul>
+                    </div>
+                </div>
             </div>
-        </footer>
-
+        </div>
     </div>
 
-    <!-- Bootstrap JS Bundle -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Custom JavaScript -->
+    <script src="languages.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

@@ -12,6 +12,15 @@ class VoiceTutor {
         this.voiceCommandsActive = true;
         this.isProcessing = false;
         
+        // Interactive learning state
+        this.conversationState = {
+            mode: 'interactive',
+            waitingForResponse: false,
+            currentTopic: null,
+            learningLevel: 'beginner',
+            lastQuestion: null
+        };
+        
         // DOM Elements
         this.elements = {
             startBtn: document.getElementById('startBtn'),
@@ -20,8 +29,12 @@ class VoiceTutor {
             conversationContainer: document.getElementById('conversationContainer'),
             sessionId: document.getElementById('sessionId'),
             clearChat: document.getElementById('clearChat'),
-            languageSelect: document.getElementById('languageSelect')
+            languageSelect: document.getElementById('languageSelect'),
+            voiceSpeedSelect: document.getElementById('voiceSpeedSelect')
         };
+        
+        // Voice settings
+        this.voiceSpeed = 1.0;
         
         this.init();
     }
@@ -100,6 +113,10 @@ class VoiceTutor {
         if (this.elements.languageSelect) {
             this.elements.languageSelect.addEventListener('change', (e) => this.changeLanguage(e.target.value));
         }
+        
+        if (this.elements.voiceSpeedSelect) {
+            this.elements.voiceSpeedSelect.addEventListener('change', (e) => this.changeVoiceSpeed(e.target.value));
+        }
 
         // Keyboard shortcut: Space bar to toggle listening
         document.addEventListener('keydown', (e) => {
@@ -130,6 +147,11 @@ class VoiceTutor {
             // Update voice commands help if it's currently displayed
             this.updateVoiceCommandsHelp();
         }
+    }
+    
+    changeVoiceSpeed(speed) {
+        this.voiceSpeed = parseFloat(speed);
+        this.setStatus(`🎵 Voice speed set to ${speed}x`, 'success');
     }
     
     updateVoiceCommandsHelp() {
@@ -393,25 +415,45 @@ class VoiceTutor {
         }
     }
 
-    startQuiz() {
-        const quizQuestions = [
-            {
-                question: "What's the main topic we've been discussing?",
-                options: ["Mathematics", "Programming", "Science", "History"],
-                answer: 1
-            },
-            {
-                question: "Which voice command shows available options?",
-                options: ["repeat", "help", "example", "quiz"],
-                answer: 1
+    async startQuiz() {
+        // Get the current topic or ask user for a topic
+        const topic = this.conversationState.currentTopic || 'general knowledge';
+        
+        this.addMessage('user', `Start a quiz about ${topic}`);
+        this.setStatus('🎯 Starting interactive quiz...', 'info');
+        
+        try {
+            const response = await fetch('/api/start-quiz', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    topic: topic,
+                    sessionId: this.sessionId 
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                this.lastAIResponse = data.response;
+                this.addMessage('ai', data.response);
+                
+                // Update conversation state
+                this.conversationState.waitingForResponse = data.waitingForResponse;
+                this.conversationState.quizMode = data.quizMode;
+                
+                await this.synthesizeSpeech(data.response);
+                
+                if (this.conversationState.waitingForResponse) {
+                    this.setStatus('🎤 Quiz question - please respond!', 'info');
+                }
+            } else {
+                throw new Error('Quiz request failed');
             }
-        ];
-        
-        const randomQuestion = quizQuestions[Math.floor(Math.random() * quizQuestions.length)];
-        const quizText = `🎯 **Quiz Time!**\n\n**Question:** ${randomQuestion.question}\n\nOptions:\nA) ${randomQuestion.options[0]}\nB) ${randomQuestion.options[1]}\nC) ${randomQuestion.options[2]}\nD) ${randomQuestion.options[3]}\n\n*Say your answer (A, B, C, or D)!*`;
-        
-        this.addMessage('ai', quizText);
-        this.setStatus('🤔 Waiting for your quiz answer...', 'info');
+        } catch (error) {
+            console.error('Quiz error:', error);
+            this.addMessage('ai', "I couldn't start a quiz right now. Please try asking your question again.");
+            this.setStatus('❌ Error starting quiz', 'error');
+        }
     }
 
     onRecognitionStart() {
@@ -463,19 +505,55 @@ class VoiceTutor {
         const isCommand = this.processVoiceCommand(transcript);
         
         if (!isCommand) {
-            // If not a command, process as regular question
+            // If not a command, process as regular question or response
             this.addMessage('user', transcript);
-            const processingText = LanguageManager.getUIText('status.processing');
-            this.setStatus(`🤔 ${processingText}`, 'info');
+            
+            // Determine if this is a response to a question or a new question
+            const isResponse = this.conversationState.waitingForResponse;
+            
+            if (isResponse) {
+                this.setStatus('🤔 Processing your response...', 'info');
+            } else {
+                this.setStatus('🤔 Processing your question...', 'info');
+            }
+            
             this.isProcessing = true;
 
             try {
-                const response = await this.sendToAI(transcript);
+                let response;
+                
+                // Check if we're in quiz mode
+                if (this.conversationState.quizMode && isResponse) {
+                    response = await this.processQuizResponse(transcript);
+                } else {
+                    response = await this.sendToAI(transcript, isResponse);
+                }
+                
                 this.lastAIResponse = response.response;
                 this.addMessage('ai', response.response);
+                
+                // Update conversation state
+                if (response.conversationState) {
+                    this.conversationState = { ...this.conversationState, ...response.conversationState };
+                }
+                
+                // Update waiting for response status
+                this.conversationState.waitingForResponse = response.waitingForResponse || false;
+                this.conversationState.quizMode = response.quizMode || false;
+                
                 await this.synthesizeSpeech(response.response);
-                const successText = LanguageManager.getUIText('status.success');
-                this.setStatus(`✅ ${successText}`, 'success');
+                
+                // Update status based on conversation state
+                if (this.conversationState.waitingForResponse) {
+                    if (this.conversationState.quizMode) {
+                        this.setStatus('🎤 Quiz question - please respond!', 'info');
+                    } else {
+                        this.setStatus('🎤 I asked you a question - please respond!', 'info');
+                    }
+                } else {
+                    this.setStatus('✅ Ready for your next question!', 'success');
+                }
+                
             } catch (error) {
                 console.error('Error:', error);
                 this.handleProcessError(error);
@@ -517,7 +595,7 @@ class VoiceTutor {
         }
     }
 
-    async sendToAI(userMessage) {
+    async sendToAI(userMessage, isResponse = false) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
@@ -527,7 +605,40 @@ class VoiceTutor {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     message: userMessage,
-                    sessionId: this.sessionId 
+                    sessionId: this.sessionId,
+                    isResponse: isResponse
+                }),
+                signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
+
+            return await response.json();
+        } catch (error) {
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') {
+                throw new Error('Request timeout. Please try again.');
+            }
+            throw error;
+        }
+    }
+
+    async processQuizResponse(userResponse) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+        try {
+            const response = await fetch('/api/quiz-response', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    response: userResponse,
+                    sessionId: this.sessionId
                 }),
                 signal: controller.signal
             });
@@ -607,7 +718,7 @@ class VoiceTutor {
         speechSynthesis.cancel();
         
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.9;
+        utterance.rate = this.voiceSpeed;
         utterance.pitch = 1;
         utterance.volume = 0.8;
         
@@ -729,11 +840,87 @@ class VoiceTutor {
         this.elements.conversationContainer.innerHTML = `
             <div class="alert alert-light border text-center">
                 <i class="bi bi-lightbulb text-warning me-2"></i>
-                Start by clicking "Start Learning" and ask your study question!
+                Start by clicking "Start Learning" and ask your study question!<br>
+                <small class="text-muted">VoiceTutor: Conversational AI that goes beyond rigid text responses!</small>
             </div>
         `;
         this.lastAIResponse = '';
-        this.setStatus('Chat cleared. Ready to continue!', 'info');
+        
+        // Reset conversation state
+        this.conversationState = {
+            mode: 'interactive',
+            waitingForResponse: false,
+            currentTopic: null,
+            learningLevel: 'beginner',
+            lastQuestion: null
+        };
+        
+        this.setStatus('Chat cleared. Interactive learning ready!', 'info');
+    }
+
+    // NEW: Get conversation state from server
+    async getConversationState() {
+        try {
+            const response = await fetch(`/api/conversation-state/${this.sessionId}`);
+            if (response.ok) {
+                const data = await response.json();
+                this.conversationState = { ...this.conversationState, ...data.state };
+                return data.state;
+            }
+        } catch (error) {
+            console.error('Error getting conversation state:', error);
+        }
+        return null;
+    }
+
+    // NEW: Update learning mode
+    async updateLearningMode(mode, learningLevel) {
+        try {
+            const response = await fetch('/api/update-learning-mode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sessionId: this.sessionId,
+                    mode: mode,
+                    learningLevel: learningLevel
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                this.conversationState = { ...this.conversationState, ...data.state };
+                this.setStatus(`Learning mode updated to ${mode} (${learningLevel})`, 'success');
+                return data.state;
+            }
+        } catch (error) {
+            console.error('Error updating learning mode:', error);
+            this.setStatus('Error updating learning mode', 'error');
+        }
+        return null;
+    }
+
+    // NEW: Reset conversation state
+    async resetConversationState() {
+        try {
+            const response = await fetch('/api/reset-conversation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sessionId: this.sessionId
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                this.conversationState = data.state;
+                this.setStatus('Conversation state reset successfully', 'success');
+                return data.state;
+            }
+        } catch (error) {
+            console.error('Error resetting conversation state:', error);
+            this.setStatus('Error resetting conversation state', 'error');
+        }
+        return null;
     }
 
     startListening() {

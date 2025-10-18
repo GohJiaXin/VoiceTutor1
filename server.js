@@ -1,1581 +1,4 @@
-// // // // const express = require('express');
-// // // // const cors = require('cors');
-// // // // const path = require('path');
-// // // // const Groq = require('groq-sdk');
-// // // // const { createClient } = require('@supabase/supabase-js');
-// // // // const axios = require('axios');
-// // // // require('dotenv').config();
 
-// // // // const app = express();
-// // // // const PORT = process.env.PORT || 3000;
-
-// // // // // Service Initialization
-// // // // let groq;
-// // // // let supabase;
-
-// // // // try {
-// // // //   if (process.env.GROQ_API_KEY) {
-// // // //     groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-// // // //   } else {
-// // // //     console.warn('⚠️  GROQ_API_KEY not found. AI responses will not work.');
-// // // //   }
-
-// // // //   if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
-// // // //     supabase = createClient(
-// // // //       process.env.SUPABASE_URL,
-// // // //       process.env.SUPABASE_ANON_KEY
-// // // //     );
-// // // //   } else {
-// // // //     console.warn('⚠️  Supabase credentials not found. Conversation history disabled.');
-// // // //   }
-// // // // } catch (error) {
-// // // //   console.error('Error initializing services:', error);
-// // // // }
-
-// // // // // Middleware
-// // // // app.use(cors());
-// // // // app.use(express.json({ limit: '10mb' }));
-// // // // app.use(express.static('public'));
-
-// // // // // Constants
-// // // // const SYSTEM_PROMPT = `You are VoiceTutor, an enthusiastic and expert AI study assistant. Your role is to:
-
-// // // // 1. EXPLAIN concepts clearly and conversationally in 2-3 sentences
-// // // // 2. BREAK DOWN complex topics into simple, digestible parts
-// // // // 3. ALWAYS end your response with a relevant follow-up question to test understanding
-// // // // 4. USE encouraging and supportive language
-// // // // 5. ADAPT to the user's learning level
-// // // // 6. KEEP responses concise for voice interaction
-
-// // // // Example format:
-// // // // "Great question! [Clear explanation]. Now, to make sure this sticks, [follow-up question]?"`;
-
-// // // // // Utility Functions
-// // // // function generateSessionId() {
-// // // //   return 'session_' + Math.random().toString(36).substr(2, 9);
-// // // // }
-
-// // // // // Route Handlers (DEFINE THESE BEFORE THE ROUTES)
-// // // // async function handleChat(req, res) {
-// // // //   try {
-// // // //     const { message, sessionId } = req.body;
-    
-// // // //     if (!message) {
-// // // //       return res.status(400).json({ error: 'No message provided' });
-// // // //     }
-
-// // // //     // Check if Groq is available
-// // // //     if (!groq) {
-// // // //       return res.status(503).json({ 
-// // // //         error: 'AI service unavailable. Please check GROQ_API_KEY configuration.',
-// // // //         response: "I'm sorry, but the AI service is currently unavailable. Please check the server configuration."
-// // // //       });
-// // // //     }
-
-// // // //     console.log('Processing question:', message);
-
-// // // //     // Get AI response from Groq
-// // // //     const completion = await groq.chat.completions.create({
-// // // //       messages: [
-// // // //         { 
-// // // //           role: 'system', 
-// // // //           content: SYSTEM_PROMPT
-// // // //         },
-// // // //         { role: 'user', content: message }
-// // // //       ],
-// // // //       model: 'llama-3.1-8b-instant',
-// // // //       temperature: 0.7,
-// // // //       max_tokens: 300
-// // // //     });
-
-// // // //     const aiResponse = completion.choices[0]?.message?.content;
-
-// // // //     // Save to Supabase if available
-// // // //     if (sessionId && supabase) {
-// // // //       try {
-// // // //         await supabase
-// // // //           .from('conversations')
-// // // //           .insert([
-// // // //             {
-// // // //               session_id: sessionId,
-// // // //               user_message: message,
-// // // //               ai_response: aiResponse,
-// // // //               created_at: new Date().toISOString()
-// // // //             }
-// // // //           ]);
-// // // //         console.log('Conversation saved to database');
-// // // //       } catch (dbError) {
-// // // //         console.log('Database save skipped:', dbError.message);
-// // // //       }
-// // // //     }
-
-// // // //     res.json({ 
-// // // //       response: aiResponse,
-// // // //       sessionId: sessionId || generateSessionId()
-// // // //     });
-    
-// // // //   } catch (error) {
-// // // //     console.error('Error in /api/chat:', error);
-// // // //     res.status(500).json({ 
-// // // //       error: 'Failed to process question',
-// // // //       details: error.message 
-// // // //     });
-// // // //   }
-// // // // }
-
-// // // // async function handleSpeechSynthesis(req, res) {
-// // // //   try {
-// // // //     const { text } = req.body;
-    
-// // // //     if (!text) {
-// // // //       return res.status(400).json({ error: 'No text provided' });
-// // // //     }
-
-// // // //     // If no ElevenLabs API key, use browser TTS
-// // // //     if (!process.env.ELEVENLABS_API_KEY) {
-// // // //       return res.json({ 
-// // // //         audioContent: null,
-// // // //         mimeType: 'audio/mpeg',
-// // // //         message: 'Use browser TTS'
-// // // //       });
-// // // //     }
-
-// // // //     const response = await axios.post(
-// // // //       `https://api.elevenlabs.io/v1/text-to-speech/${process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM'}`,
-// // // //       {
-// // // //         text: text,
-// // // //         model_id: 'eleven_monolingual_v1',
-// // // //         voice_settings: {
-// // // //           stability: 0.5,
-// // // //           similarity_boost: 0.5
-// // // //         }
-// // // //       },
-// // // //       {
-// // // //         headers: {
-// // // //           'xi-api-key': process.env.ELEVENLABS_API_KEY,
-// // // //           'Content-Type': 'application/json'
-// // // //         },
-// // // //         responseType: 'arraybuffer'
-// // // //       }
-// // // //     );
-
-// // // //     const audioBase64 = Buffer.from(response.data).toString('base64');
-    
-// // // //     res.json({
-// // // //       audioContent: audioBase64,
-// // // //       mimeType: 'audio/mpeg'
-// // // //     });
-
-// // // //   } catch (error) {
-// // // //     console.error('ElevenLabs API error:', error.response?.data || error.message);
-// // // //     res.status(500).json({ 
-// // // //       error: 'Failed to synthesize speech',
-// // // //       details: 'Using browser TTS fallback'
-// // // //     });
-// // // //   }
-// // // // }
-
-// // // // async function getConversationHistory(req, res) {
-// // // //   try {
-// // // //     const { sessionId } = req.params;
-    
-// // // //     if (!supabase) {
-// // // //       return res.json({ conversations: [] });
-// // // //     }
-
-// // // //     const { data, error } = await supabase
-// // // //       .from('conversations')
-// // // //       .select('*')
-// // // //       .eq('session_id', sessionId)
-// // // //       .order('created_at', { ascending: true });
-
-// // // //     if (error) throw error;
-
-// // // //     res.json({ conversations: data || [] });
-// // // //   } catch (error) {
-// // // //     console.error('Error fetching conversations:', error);
-// // // //     res.json({ conversations: [] });
-// // // //   }
-// // // // }
-
-// // // // function healthCheck(req, res) {
-// // // //   res.json({ 
-// // // //     status: 'OK', 
-// // // //     timestamp: new Date().toISOString(),
-// // // //     services: {
-// // // //       groq: !!process.env.GROQ_API_KEY,
-// // // //       elevenlabs: !!process.env.ELEVENLABS_API_KEY,
-// // // //       supabase: !!process.env.SUPABASE_URL
-// // // //     }
-// // // //   });
-// // // // }
-
-// // // // function serveFrontend(req, res) {
-// // // //   res.sendFile(path.join(__dirname, 'public', 'index.html'));
-// // // // }
-
-// // // // // Routes (NOW THESE CAN USE THE FUNCTIONS)
-// // // // app.post('/api/chat', handleChat);
-// // // // app.post('/api/synthesize-speech', handleSpeechSynthesis);
-// // // // app.get('/api/conversations/:sessionId', getConversationHistory);
-// // // // app.get('/api/health', healthCheck);
-// // // // app.get('/', serveFrontend);
-
-// // // // // Start Server
-// // // // app.listen(PORT, () => {
-// // // //   console.log(`🚀 VoiceTutor running on http://localhost:${PORT}`);
-// // // //   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-  
-// // // //   // Log service status
-// // // //   if (!process.env.GROQ_API_KEY) {
-// // // //     console.warn('⚠️  GROQ_API_KEY not found. AI responses will not work.');
-// // // //   }
-  
-// // // //   if (!process.env.ELEVENLABS_API_KEY) {
-// // // //     console.warn('⚠️  ELEVENLABS_API_KEY not found. Using browser TTS fallback.');
-// // // //   }
-  
-// // // //   if (!process.env.SUPABASE_URL) {
-// // // //     console.warn('⚠️  Supabase credentials not found. Conversation history disabled.');
-// // // //   }
-// // // // });
-// // // const express = require('express');
-// // // const cors = require('cors');
-// // // const path = require('path');
-// // // const Groq = require('groq-sdk');
-// // // const { createClient } = require('@supabase/supabase-js');
-// // // const axios = require('axios');
-// // // require('dotenv').config();
-
-// // // const app = express();
-// // // const PORT = process.env.PORT || 3000;
-
-// // // // Service Initialization
-// // // let groq;
-// // // let supabase;
-
-// // // try {
-// // //   if (process.env.GROQ_API_KEY) {
-// // //     groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-// // //   } else {
-// // //     console.warn('⚠️  GROQ_API_KEY not found. AI responses will not work.');
-// // //   }
-
-// // //   if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
-// // //     supabase = createClient(
-// // //       process.env.SUPABASE_URL,
-// // //       process.env.SUPABASE_ANON_KEY
-// // //     );
-// // //   } else {
-// // //     console.warn('⚠️  Supabase credentials not found. Conversation history disabled.');
-// // //   }
-// // // } catch (error) {
-// // //   console.error('Error initializing services:', error);
-// // // }
-
-// // // // Middleware
-// // // app.use(cors());
-// // // app.use(express.json({ limit: '10mb' }));
-// // // app.use(express.static('public'));
-
-// // // // Constants
-// // // const SYSTEM_PROMPT = `You are VoiceTutor, an enthusiastic and expert AI study assistant. Your role is to:
-
-// // // 1. EXPLAIN concepts clearly and conversationally in 2-3 sentences
-// // // 2. BREAK DOWN complex topics into simple, digestible parts
-// // // 3. ALWAYS end your response with a relevant follow-up question to test understanding
-// // // 4. USE encouraging and supportive language
-// // // 5. ADAPT to the user's learning level
-// // // 6. KEEP responses concise for voice interaction
-
-// // // Example format:
-// // // "Great question! [Clear explanation]. Now, to make sure this sticks, [follow-up question]?"`;
-
-// // // // Utility Functions
-// // // function generateSessionId() {
-// // //   return 'session_' + Math.random().toString(36).substr(2, 9);
-// // // }
-
-// // // // Route Handlers
-// // // async function handleChat(req, res) {
-// // //   try {
-// // //     const { message, sessionId } = req.body;
-    
-// // //     if (!message) {
-// // //       return res.status(400).json({ error: 'No message provided' });
-// // //     }
-
-// // //     // Check if Groq is available
-// // //     if (!groq) {
-// // //       return res.status(503).json({ 
-// // //         error: 'AI service unavailable. Please check GROQ_API_KEY configuration.',
-// // //         response: "I'm sorry, but the AI service is currently unavailable. Please check the server configuration."
-// // //       });
-// // //     }
-
-// // //     console.log('Processing question:', message);
-
-// // //     // Get AI response from Groq
-// // //     const completion = await groq.chat.completions.create({
-// // //       messages: [
-// // //         { 
-// // //           role: 'system', 
-// // //           content: SYSTEM_PROMPT
-// // //         },
-// // //         { role: 'user', content: message }
-// // //       ],
-// // //       model: 'llama-3.1-8b-instant',
-// // //       temperature: 0.7,
-// // //       max_tokens: 300
-// // //     });
-
-// // //     const aiResponse = completion.choices[0]?.message?.content;
-
-// // //     // Save to Supabase if available
-// // //     if (sessionId && supabase) {
-// // //       try {
-// // //         await supabase
-// // //           .from('conversations')
-// // //           .insert([
-// // //             {
-// // //               session_id: sessionId,
-// // //               user_message: message,
-// // //               ai_response: aiResponse,
-// // //               created_at: new Date().toISOString()
-// // //             }
-// // //           ]);
-// // //         console.log('Conversation saved to database');
-// // //       } catch (dbError) {
-// // //         console.log('Database save skipped:', dbError.message);
-// // //       }
-// // //     }
-
-// // //     res.json({ 
-// // //       response: aiResponse,
-// // //       sessionId: sessionId || generateSessionId()
-// // //     });
-    
-// // //   } catch (error) {
-// // //     console.error('Error in /api/chat:', error);
-// // //     res.status(500).json({ 
-// // //       error: 'Failed to process question',
-// // //       details: error.message 
-// // //     });
-// // //   }
-// // // }
-
-// // // async function handleSpeechSynthesis(req, res) {
-// // //   try {
-// // //     const { text } = req.body;
-    
-// // //     if (!text) {
-// // //       return res.status(400).json({ error: 'No text provided' });
-// // //     }
-
-// // //     // If no ElevenLabs API key, use browser TTS
-// // //     if (!process.env.ELEVENLABS_API_KEY) {
-// // //       console.log('ElevenLabs: No API key, using browser TTS fallback');
-// // //       return res.json({ 
-// // //         audioContent: null,
-// // //         mimeType: 'audio/mpeg',
-// // //         message: 'Use browser TTS'
-// // //       });
-// // //     }
-
-// // //     console.log('Synthesizing speech with ElevenLabs...');
-
-// // //     const response = await axios.post(
-// // //       `https://api.elevenlabs.io/v1/text-to-speech/${process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM'}`,
-// // //       {
-// // //         text: text.substring(0, 5000), // Limit text length
-// // //         model_id: 'eleven_monolingual_v1',
-// // //         voice_settings: {
-// // //           stability: 0.5,
-// // //           similarity_boost: 0.5
-// // //         }
-// // //       },
-// // //       {
-// // //         headers: {
-// // //           'xi-api-key': process.env.ELEVENLABS_API_KEY,
-// // //           'Content-Type': 'application/json'
-// // //         },
-// // //         responseType: 'arraybuffer',
-// // //         timeout: 30000 // 30 second timeout
-// // //       }
-// // //     );
-
-// // //     const audioBase64 = Buffer.from(response.data).toString('base64');
-    
-// // //     console.log('Speech synthesized successfully');
-// // //     res.json({
-// // //       audioContent: audioBase64,
-// // //       mimeType: 'audio/mpeg'
-// // //     });
-
-// // //   } catch (error) {
-// // //     console.error('❌ ElevenLabs API error:', error.response?.status, error.response?.data?.detail?.message || error.message);
-    
-// // //     // Handle specific ElevenLabs errors
-// // //     if (error.response?.data) {
-// // //       const buffer = error.response.data;
-// // //       let errorMessage = 'Unknown ElevenLabs error';
-      
-// // //       try {
-// // //         // Try to parse the buffer as JSON
-// // //         const errorData = JSON.parse(buffer.toString());
-// // //         errorMessage = errorData.detail?.message || errorData.detail?.status || JSON.stringify(errorData);
-// // //       } catch (parseError) {
-// // //         errorMessage = buffer.toString().substring(0, 200); // First 200 chars
-// // //       }
-      
-// // //       console.error('ElevenLabs error details:', errorMessage);
-      
-// // //       if (errorMessage.includes('quota_exceeded') || errorMessage.includes('quota')) {
-// // //         console.log('🎯 ElevenLabs quota exceeded - switching to browser TTS');
-// // //         return res.json({ 
-// // //           audioContent: null,
-// // //           mimeType: 'audio/mpeg',
-// // //           message: 'Quota exceeded, using browser TTS'
-// // //         });
-// // //       }
-// // //     }
-    
-// // //     // Fallback to browser TTS for any error
-// // //     console.log('Using browser TTS fallback due to ElevenLabs error');
-// // //     res.json({ 
-// // //       audioContent: null,
-// // //       mimeType: 'audio/mpeg',
-// // //       message: 'Using browser TTS fallback'
-// // //     });
-// // //   }
-// // // }
-
-// // // async function getConversationHistory(req, res) {
-// // //   try {
-// // //     const { sessionId } = req.params;
-    
-// // //     if (!supabase) {
-// // //       return res.json({ conversations: [] });
-// // //     }
-
-// // //     const { data, error } = await supabase
-// // //       .from('conversations')
-// // //       .select('*')
-// // //       .eq('session_id', sessionId)
-// // //       .order('created_at', { ascending: true });
-
-// // //     if (error) throw error;
-
-// // //     res.json({ conversations: data || [] });
-// // //   } catch (error) {
-// // //     console.error('Error fetching conversations:', error);
-// // //     res.json({ conversations: [] });
-// // //   }
-// // // }
-
-// // // function healthCheck(req, res) {
-// // //   res.json({ 
-// // //     status: 'OK', 
-// // //     timestamp: new Date().toISOString(),
-// // //     services: {
-// // //       groq: !!process.env.GROQ_API_KEY,
-// // //       elevenlabs: !!process.env.ELEVENLABS_API_KEY,
-// // //       supabase: !!process.env.SUPABASE_URL
-// // //     }
-// // //   });
-// // // }
-
-// // // function serveFrontend(req, res) {
-// // //   res.sendFile(path.join(__dirname, 'public', 'index.html'));
-// // // }
-
-// // // // Routes
-// // // app.post('/api/chat', handleChat);
-// // // app.post('/api/synthesize-speech', handleSpeechSynthesis);
-// // // app.get('/api/conversations/:sessionId', getConversationHistory);
-// // // app.get('/api/health', healthCheck);
-// // // app.get('/', serveFrontend);
-
-// // // // Start Server
-// // // app.listen(PORT, () => {
-// // //   console.log(`🚀 VoiceTutor running on http://localhost:${PORT}`);
-// // //   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-  
-// // //   // Log service status
-// // //   if (!process.env.GROQ_API_KEY) {
-// // //     console.warn('⚠️  GROQ_API_KEY not found. AI responses will not work.');
-// // //   }
-  
-// // //   if (!process.env.ELEVENLABS_API_KEY) {
-// // //     console.warn('⚠️  ELEVENLABS_API_KEY not found. Using browser TTS fallback.');
-// // //   } else {
-// // //     console.log('✅ ElevenLabs API key found');
-// // //   }
-  
-// // //   if (!process.env.SUPABASE_URL) {
-// // //     console.warn('⚠️  Supabase credentials not found. Conversation history disabled.');
-// // //   }
-// // // });
-// // const express = require('express');
-// // const cors = require('cors');
-// // const path = require('path');
-// // const Groq = require('groq-sdk');
-// // const { createClient } = require('@supabase/supabase-js');
-// // const axios = require('axios');
-// // require('dotenv').config();
-
-// // const app = express();
-// // const PORT = process.env.PORT || 3000;
-
-// // // Service Initialization
-// // let groq;
-// // let supabase;
-
-// // try {
-// //   if (process.env.GROQ_API_KEY) {
-// //     groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-// //   } else {
-// //     console.warn('⚠️  GROQ_API_KEY not found. AI responses will not work.');
-// //   }
-
-// //   if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
-// //     supabase = createClient(
-// //       process.env.SUPABASE_URL,
-// //       process.env.SUPABASE_ANON_KEY
-// //     );
-// //   } else {
-// //     console.warn('⚠️  Supabase credentials not found. Conversation history disabled.');
-// //   }
-// // } catch (error) {
-// //   console.error('Error initializing services:', error);
-// // }
-
-// // // Middleware
-// // app.use(cors());
-// // app.use(express.json({ limit: '10mb' }));
-// // app.use(express.static('public'));
-
-// // // Constants
-// // const SYSTEM_PROMPT = `You are VoiceTutor, an enthusiastic and expert AI study assistant. Your role is to:
-
-// // 1. EXPLAIN concepts clearly and conversationally in 2-3 sentences
-// // 2. BREAK DOWN complex topics into simple, digestible parts
-// // 3. ALWAYS end your response with a relevant follow-up question to test understanding
-// // 4. USE encouraging and supportive language
-// // 5. ADAPT to the user's learning level
-// // 6. KEEP responses concise for voice interaction
-
-// // Example format:
-// // "Great question! [Clear explanation]. Now, to make sure this sticks, [follow-up question]?"`;
-
-// // // Utility Functions
-// // function generateSessionId() {
-// //   return 'session_' + Math.random().toString(36).substr(2, 9);
-// // }
-
-// // // Route Handlers
-
-// // // Main chat endpoint
-// // async function handleChat(req, res) {
-// //   try {
-// //     const { message, sessionId } = req.body;
-    
-// //     if (!message) {
-// //       return res.status(400).json({ error: 'No message provided' });
-// //     }
-
-// //     // Check if Groq is available
-// //     if (!groq) {
-// //       return res.status(503).json({ 
-// //         error: 'AI service unavailable. Please check GROQ_API_KEY configuration.',
-// //         response: "I'm sorry, but the AI service is currently unavailable. Please check the server configuration."
-// //       });
-// //     }
-
-// //     console.log('Processing question:', message);
-
-// //     // Get AI response from Groq
-// //     const completion = await groq.chat.completions.create({
-// //       messages: [
-// //         { 
-// //           role: 'system', 
-// //           content: SYSTEM_PROMPT
-// //         },
-// //         { role: 'user', content: message }
-// //       ],
-// //       model: 'llama-3.1-8b-instant',
-// //       temperature: 0.7,
-// //       max_tokens: 300
-// //     });
-
-// //     const aiResponse = completion.choices[0]?.message?.content;
-
-// //     // Save to Supabase if available
-// //     if (sessionId && supabase) {
-// //       try {
-// //         await supabase
-// //           .from('conversations')
-// //           .insert([
-// //             {
-// //               session_id: sessionId,
-// //               user_message: message,
-// //               ai_response: aiResponse,
-// //               created_at: new Date().toISOString()
-// //             }
-// //           ]);
-// //         console.log('Conversation saved to database');
-// //       } catch (dbError) {
-// //         console.log('Database save skipped:', dbError.message);
-// //       }
-// //     }
-
-// //     res.json({ 
-// //       response: aiResponse,
-// //       sessionId: sessionId || generateSessionId()
-// //     });
-    
-// //   } catch (error) {
-// //     console.error('Error in /api/chat:', error);
-// //     res.status(500).json({ 
-// //       error: 'Failed to process question',
-// //       details: error.message 
-// //     });
-// //   }
-// // }
-
-// // // NEW: Rephrase explanation endpoint
-// // async function handleRephrase(req, res) {
-// //   try {
-// //     const { lastResponse, sessionId } = req.body;
-    
-// //     if (!lastResponse) {
-// //       return res.status(400).json({ error: 'No last response provided' });
-// //     }
-
-// //     // Check if Groq is available
-// //     if (!groq) {
-// //       return res.status(503).json({ 
-// //         error: 'AI service unavailable',
-// //         response: "I'm sorry, but the AI service is currently unavailable."
-// //       });
-// //     }
-
-// //     console.log('Rephrasing explanation...');
-
-// //     const completion = await groq.chat.completions.create({
-// //       messages: [
-// //         { 
-// //           role: 'system', 
-// //           content: SYSTEM_PROMPT + " The user wants you to rephrase your last explanation. Make it clearer or use a different approach like an analogy, simpler terms, or a step-by-step breakdown."
-// //         },
-// //         { role: 'user', content: `Please rephrase this explanation in a different way. Use a different teaching approach: "${lastResponse}"` }
-// //       ],
-// //       model: 'llama-3.1-8b-instant',
-// //       temperature: 0.8, // Higher temperature for more varied responses
-// //       max_tokens: 300
-// //     });
-
-// //     const aiResponse = completion.choices[0]?.message?.content;
-
-// //     // Save to Supabase if available
-// //     if (sessionId && supabase) {
-// //       try {
-// //         await supabase
-// //           .from('conversations')
-// //           .insert([
-// //             {
-// //               session_id: sessionId,
-// //               user_message: 'Explain that differently',
-// //               ai_response: aiResponse,
-// //               created_at: new Date().toISOString()
-// //             }
-// //           ]);
-// //       } catch (dbError) {
-// //         console.log('Database save skipped:', dbError.message);
-// //       }
-// //     }
-
-// //     res.json({ 
-// //       response: aiResponse,
-// //       sessionId: sessionId || generateSessionId()
-// //     });
-    
-// //   } catch (error) {
-// //     console.error('Error in /api/rephrase:', error);
-// //     res.status(500).json({ 
-// //       error: 'Failed to rephrase explanation',
-// //       response: "I couldn't rephrase that right now. Please try asking your question again."
-// //     });
-// //   }
-// // }
-
-// // // NEW: Provide examples endpoint
-// // async function handleExample(req, res) {
-// //   try {
-// //     const { lastResponse, sessionId } = req.body;
-    
-// //     if (!lastResponse) {
-// //       return res.status(400).json({ error: 'No last response provided' });
-// //     }
-
-// //     // Check if Groq is available
-// //     if (!groq) {
-// //       return res.status(503).json({ 
-// //         error: 'AI service unavailable',
-// //         response: "I'm sorry, but the AI service is currently unavailable."
-// //       });
-// //     }
-
-// //     console.log('Generating examples...');
-
-// //     const completion = await groq.chat.completions.create({
-// //       messages: [
-// //         { 
-// //           role: 'system', 
-// //           content: SYSTEM_PROMPT + " The user wants practical examples. Provide 2-3 clear, real-world examples that illustrate the concept. Make the examples relevant and easy to understand."
-// //         },
-// //         { role: 'user', content: `Please provide 2-3 practical examples for this concept: "${lastResponse}"` }
-// //       ],
-// //       model: 'llama-3.1-8b-instant',
-// //       temperature: 0.7,
-// //       max_tokens: 400 // More tokens for detailed examples
-// //     });
-
-// //     const aiResponse = completion.choices[0]?.message?.content;
-
-// //     // Save to Supabase if available
-// //     if (sessionId && supabase) {
-// //       try {
-// //         await supabase
-// //           .from('conversations')
-// //           .insert([
-// //             {
-// //               session_id: sessionId,
-// //               user_message: 'Give me an example',
-// //               ai_response: aiResponse,
-// //               created_at: new Date().toISOString()
-// //             }
-// //           ]);
-// //       } catch (dbError) {
-// //         console.log('Database save skipped:', dbError.message);
-// //       }
-// //     }
-
-// //     res.json({ 
-// //       response: aiResponse,
-// //       sessionId: sessionId || generateSessionId()
-// //     });
-    
-// //   } catch (error) {
-// //     console.error('Error in /api/example:', error);
-// //     res.status(500).json({ 
-// //       error: 'Failed to generate examples',
-// //       response: "I couldn't find good examples right now. Please try asking your question again."
-// //     });
-// //   }
-// // }
-
-// // // NEW: Quiz generation endpoint
-// // async function handleQuiz(req, res) {
-// //   try {
-// //     const { topic, sessionId } = req.body;
-    
-// //     if (!topic) {
-// //       return res.status(400).json({ error: 'No topic provided' });
-// //     }
-
-// //     // Check if Groq is available
-// //     if (!groq) {
-// //       return res.status(503).json({ 
-// //         error: 'AI service unavailable',
-// //         response: "I'm sorry, but the AI service is currently unavailable."
-// //       });
-// //     }
-
-// //     console.log('Generating quiz for topic:', topic);
-
-// //     const completion = await groq.chat.completions.create({
-// //       messages: [
-// //         { 
-// //           role: 'system', 
-// //           content: `You are a quiz master. Create a multiple-choice quiz question about the given topic. Format your response as JSON with this structure:
-// //           {
-// //             "question": "The quiz question",
-// //             "options": ["Option A", "Option B", "Option C", "Option D"],
-// //             "correct": 0,
-// //             "explanation": "Brief explanation of why the correct answer is right"
-// //           }
-// //           Make the question educational and relevant to the topic.`
-// //         },
-// //         { role: 'user', content: `Create a quiz question about: ${topic}` }
-// //       ],
-// //       model: 'llama-3.1-8b-instant',
-// //       temperature: 0.7,
-// //       max_tokens: 300
-// //     });
-
-// //     const aiResponse = completion.choices[0]?.message?.content;
-
-// //     // Try to parse JSON response, fallback to text if needed
-// //     let quizData;
-// //     try {
-// //       quizData = JSON.parse(aiResponse);
-// //     } catch (parseError) {
-// //       quizData = {
-// //         question: `Let's test your knowledge about ${topic}!`,
-// //         options: ["I'm ready for a quiz!", "Ask me a question", "Test my understanding", "Challenge me"],
-// //         correct: 0,
-// //         explanation: "This is a fun way to check your understanding!"
-// //       };
-// //     }
-
-// //     // Save to Supabase if available
-// //     if (sessionId && supabase) {
-// //       try {
-// //         await supabase
-// //           .from('conversations')
-// //           .insert([
-// //             {
-// //               session_id: sessionId,
-// //               user_message: 'Quiz me',
-// //               ai_response: `Quiz: ${quizData.question}\n\nOptions:\nA) ${quizData.options[0]}\nB) ${quizData.options[1]}\nC) ${quizData.options[2]}\nD) ${quizData.options[3]}\n\nCorrect answer: ${quizData.options[quizData.correct]}\nExplanation: ${quizData.explanation}`,
-// //               created_at: new Date().toISOString()
-// //             }
-// //           ]);
-// //       } catch (dbError) {
-// //         console.log('Database save skipped:', dbError.message);
-// //       }
-// //     }
-
-// //     res.json({ 
-// //       response: quizData,
-// //       sessionId: sessionId || generateSessionId()
-// //     });
-    
-// //   } catch (error) {
-// //     console.error('Error in /api/quiz:', error);
-// //     res.status(500).json({ 
-// //       error: 'Failed to generate quiz',
-// //       response: {
-// //         question: "Let's test your knowledge!",
-// //         options: ["Ready for a quiz!", "Ask me anything", "Test my understanding", "Challenge accepted"],
-// //         correct: 0,
-// //         explanation: "This is a fun way to learn!"
-// //       }
-// //     });
-// //   }
-// // }
-
-// // // Speech synthesis endpoint
-// // async function handleSpeechSynthesis(req, res) {
-// //   try {
-// //     const { text } = req.body;
-    
-// //     if (!text) {
-// //       return res.status(400).json({ error: 'No text provided' });
-// //     }
-
-// //     // If no ElevenLabs API key, use browser TTS
-// //     if (!process.env.ELEVENLABS_API_KEY) {
-// //       console.log('ElevenLabs: No API key, using browser TTS fallback');
-// //       return res.json({ 
-// //         audioContent: null,
-// //         mimeType: 'audio/mpeg',
-// //         message: 'Use browser TTS'
-// //       });
-// //     }
-
-// //     console.log('Synthesizing speech with ElevenLabs...');
-
-// //     const response = await axios.post(
-// //       `https://api.elevenlabs.io/v1/text-to-speech/${process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM'}`,
-// //       {
-// //         text: text.substring(0, 5000), // Limit text length
-// //         model_id: 'eleven_monolingual_v1',
-// //         voice_settings: {
-// //           stability: 0.5,
-// //           similarity_boost: 0.5
-// //         }
-// //       },
-// //       {
-// //         headers: {
-// //           'xi-api-key': process.env.ELEVENLABS_API_KEY,
-// //           'Content-Type': 'application/json'
-// //         },
-// //         responseType: 'arraybuffer',
-// //         timeout: 30000 // 30 second timeout
-// //       }
-// //     );
-
-// //     const audioBase64 = Buffer.from(response.data).toString('base64');
-    
-// //     console.log('Speech synthesized successfully');
-// //     res.json({
-// //       audioContent: audioBase64,
-// //       mimeType: 'audio/mpeg'
-// //     });
-
-// //   } catch (error) {
-// //     console.error('❌ ElevenLabs API error:', error.response?.status, error.response?.data?.detail?.message || error.message);
-    
-// //     // Handle specific ElevenLabs errors
-// //     if (error.response?.data) {
-// //       const buffer = error.response.data;
-// //       let errorMessage = 'Unknown ElevenLabs error';
-      
-// //       try {
-// //         // Try to parse the buffer as JSON
-// //         const errorData = JSON.parse(buffer.toString());
-// //         errorMessage = errorData.detail?.message || errorData.detail?.status || JSON.stringify(errorData);
-// //       } catch (parseError) {
-// //         errorMessage = buffer.toString().substring(0, 200); // First 200 chars
-// //       }
-      
-// //       console.error('ElevenLabs error details:', errorMessage);
-      
-// //       if (errorMessage.includes('quota_exceeded') || errorMessage.includes('quota')) {
-// //         console.log('🎯 ElevenLabs quota exceeded - switching to browser TTS');
-// //         return res.json({ 
-// //           audioContent: null,
-// //           mimeType: 'audio/mpeg',
-// //           message: 'Quota exceeded, using browser TTS'
-// //         });
-// //       }
-// //     }
-    
-// //     // Fallback to browser TTS for any error
-// //     console.log('Using browser TTS fallback due to ElevenLabs error');
-// //     res.json({ 
-// //       audioContent: null,
-// //       mimeType: 'audio/mpeg',
-// //       message: 'Using browser TTS fallback'
-// //     });
-// //   }
-// // }
-
-// // // Conversation history endpoint
-// // async function getConversationHistory(req, res) {
-// //   try {
-// //     const { sessionId } = req.params;
-    
-// //     if (!supabase) {
-// //       return res.json({ conversations: [] });
-// //     }
-
-// //     const { data, error } = await supabase
-// //       .from('conversations')
-// //       .select('*')
-// //       .eq('session_id', sessionId)
-// //       .order('created_at', { ascending: true });
-
-// //     if (error) throw error;
-
-// //     res.json({ conversations: data || [] });
-// //   } catch (error) {
-// //     console.error('Error fetching conversations:', error);
-// //     res.json({ conversations: [] });
-// //   }
-// // }
-
-// // // Health check endpoint
-// // function healthCheck(req, res) {
-// //   res.json({ 
-// //     status: 'OK', 
-// //     timestamp: new Date().toISOString(),
-// //     services: {
-// //       groq: !!process.env.GROQ_API_KEY,
-// //       elevenlabs: !!process.env.ELEVENLABS_API_KEY,
-// //       supabase: !!process.env.SUPABASE_URL,
-// //       voice_commands: true
-// //     },
-// //     features: {
-// //       voice_commands: true,
-// //       rephrase: true,
-// //       examples: true,
-// //       quizzes: true
-// //     }
-// //   });
-// // }
-
-// // // Serve frontend
-// // function serveFrontend(req, res) {
-// //   res.sendFile(path.join(__dirname, 'public', 'index.html'));
-// // }
-
-// // // Routes
-// // app.post('/api/chat', handleChat);
-// // app.post('/api/rephrase', handleRephrase);      // NEW: Rephrase endpoint
-// // app.post('/api/example', handleExample);        // NEW: Examples endpoint  
-// // app.post('/api/quiz', handleQuiz);              // NEW: Quiz endpoint
-// // app.post('/api/synthesize-speech', handleSpeechSynthesis);
-// // app.get('/api/conversations/:sessionId', getConversationHistory);
-// // app.get('/api/health', healthCheck);
-// // app.get('/', serveFrontend);
-
-// // // Start Server
-// // app.listen(PORT, () => {
-// //   console.log(`🚀 VoiceTutor running on http://localhost:${PORT}`);
-// //   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-  
-// //   // Log service status
-// //   if (!process.env.GROQ_API_KEY) {
-// //     console.warn('⚠️  GROQ_API_KEY not found. AI responses will not work.');
-// //   } else {
-// //     console.log('✅ Groq API key found - AI responses enabled');
-// //   }
-  
-// //   if (!process.env.ELEVENLABS_API_KEY) {
-// //     console.warn('⚠️  ELEVENLABS_API_KEY not found. Using browser TTS fallback.');
-// //   } else {
-// //     console.log('✅ ElevenLabs API key found - Premium voices enabled');
-// //   }
-  
-// //   if (!process.env.SUPABASE_URL) {
-// //     console.warn('⚠️  Supabase credentials not found. Conversation history disabled.');
-// //   } else {
-// //     console.log('✅ Supabase connected - Conversation history enabled');
-// //   }
-  
-// //   console.log('🎯 Voice commands enabled:');
-// //   console.log('   • "help" - Show all voice commands');
-// //   console.log('   • "repeat" - Repeat last explanation');
-// //   console.log('   • "explain differently" - Rephrase concept');
-// //   console.log('   • "give me an example" - Get practical examples');
-// //   console.log('   • "quiz me" - Start interactive quiz');
-// //   console.log('   • "clear chat" - Clear conversation');
-// // });
-// /**
-//  * VoiceTutor - Frontend Application with Bootstrap
-//  * Improved version with better error handling, voice commands, and compatibility
-//  */
-
-// const express = require('express');
-// const cors = require('cors');
-// const path = require('path');
-// const Groq = require('groq-sdk');
-// const { createClient } = require('@supabase/supabase-js');
-// const axios = require('axios');
-// require('dotenv').config();
-
-// const app = express();
-// const PORT = process.env.PORT || 3000;
-
-// // Service Initialization
-// let groq;
-// let supabase;
-
-// try {
-//   if (process.env.GROQ_API_KEY) {
-//     groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-//   } else {
-//     console.warn('⚠️  GROQ_API_KEY not found. AI responses will not work.');
-//   }
-
-//   if (process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY) {
-//     supabase = createClient(
-//       process.env.SUPABASE_URL,
-//       process.env.SUPABASE_ANON_KEY
-//     );
-//   } else {
-//     console.warn('⚠️  Supabase credentials not found. Conversation history disabled.');
-//   }
-// } catch (error) {
-//   console.error('Error initializing services:', error);
-// }
-
-// // Middleware
-// app.use(cors());
-// app.use(express.json({ limit: '10mb' }));
-// app.use(express.static('public'));
-
-// // Constants
-// const SYSTEM_PROMPT = `You are VoiceTutor, an enthusiastic and expert AI study assistant. Your role is to:
-
-// 1. EXPLAIN concepts clearly and conversationally in 2-3 sentences
-// 2. BREAK DOWN complex topics into simple, digestible parts
-// 3. ALWAYS end your response with a relevant follow-up question to test understanding
-// 4. USE encouraging and supportive language
-// 5. ADAPT to the user's learning level
-// 6. KEEP responses concise for voice interaction
-
-// Example format:
-// "Great question! [Clear explanation]. Now, to make sure this sticks, [follow-up question]?"`;
-
-// // Utility Functions
-// function generateSessionId() {
-//   return 'session_' + Math.random().toString(36).substr(2, 9);
-// }
-
-// // Route Handlers
-
-// // Main chat endpoint
-// async function handleChat(req, res) {
-//   try {
-//     const { message, sessionId } = req.body;
-    
-//     if (!message) {
-//       return res.status(400).json({ error: 'No message provided' });
-//     }
-
-//     // Check if Groq is available
-//     if (!groq) {
-//       return res.status(503).json({ 
-//         error: 'AI service unavailable. Please check GROQ_API_KEY configuration.',
-//         response: "I'm sorry, but the AI service is currently unavailable. Please check the server configuration."
-//       });
-//     }
-
-//     console.log('Processing question:', message);
-
-//     // Get AI response from Groq
-//     const completion = await groq.chat.completions.create({
-//       messages: [
-//         { 
-//           role: 'system', 
-//           content: SYSTEM_PROMPT
-//         },
-//         { role: 'user', content: message }
-//       ],
-//       model: 'llama-3.1-8b-instant',
-//       temperature: 0.7,
-//       max_tokens: 300
-//     });
-
-//     const aiResponse = completion.choices[0]?.message?.content;
-
-//     // Save to Supabase if available
-//     if (sessionId && supabase) {
-//       try {
-//         await supabase
-//           .from('conversations')
-//           .insert([
-//             {
-//               session_id: sessionId,
-//               user_message: message,
-//               ai_response: aiResponse,
-//               created_at: new Date().toISOString()
-//             }
-//           ]);
-//         console.log('Conversation saved to database');
-//       } catch (dbError) {
-//         console.log('Database save skipped:', dbError.message);
-//       }
-//     }
-
-//     res.json({ 
-//       response: aiResponse,
-//       sessionId: sessionId || generateSessionId()
-//     });
-    
-//   } catch (error) {
-//     console.error('Error in /api/chat:', error);
-//     res.status(500).json({ 
-//       error: 'Failed to process question',
-//       details: error.message 
-//     });
-//   }
-// }
-
-// // Rephrase explanation endpoint
-// async function handleRephrase(req, res) {
-//   try {
-//     const { lastResponse, sessionId } = req.body;
-    
-//     if (!lastResponse) {
-//       return res.status(400).json({ error: 'No last response provided' });
-//     }
-
-//     // Check if Groq is available
-//     if (!groq) {
-//       return res.status(503).json({ 
-//         error: 'AI service unavailable',
-//         response: "I'm sorry, but the AI service is currently unavailable."
-//       });
-//     }
-
-//     console.log('Rephrasing explanation...');
-
-//     const completion = await groq.chat.completions.create({
-//       messages: [
-//         { 
-//           role: 'system', 
-//           content: SYSTEM_PROMPT + " The user wants you to rephrase your last explanation. Make it clearer or use a different approach like an analogy, simpler terms, or a step-by-step breakdown."
-//         },
-//         { role: 'user', content: `Please rephrase this explanation in a different way. Use a different teaching approach: "${lastResponse}"` }
-//       ],
-//       model: 'llama-3.1-8b-instant',
-//       temperature: 0.8,
-//       max_tokens: 300
-//     });
-
-//     const aiResponse = completion.choices[0]?.message?.content;
-
-//     // Save to Supabase if available
-//     if (sessionId && supabase) {
-//       try {
-//         await supabase
-//           .from('conversations')
-//           .insert([
-//             {
-//               session_id: sessionId,
-//               user_message: 'Explain that differently',
-//               ai_response: aiResponse,
-//               created_at: new Date().toISOString()
-//             }
-//           ]);
-//       } catch (dbError) {
-//         console.log('Database save skipped:', dbError.message);
-//       }
-//     }
-
-//     res.json({ 
-//       response: aiResponse,
-//       sessionId: sessionId || generateSessionId()
-//     });
-    
-//   } catch (error) {
-//     console.error('Error in /api/rephrase:', error);
-//     res.status(500).json({ 
-//       error: 'Failed to rephrase explanation',
-//       response: "I couldn't rephrase that right now. Please try asking your question again."
-//     });
-//   }
-// }
-
-// // Provide examples endpoint
-// async function handleExample(req, res) {
-//   try {
-//     const { lastResponse, sessionId } = req.body;
-    
-//     if (!lastResponse) {
-//       return res.status(400).json({ error: 'No last response provided' });
-//     }
-
-//     // Check if Groq is available
-//     if (!groq) {
-//       return res.status(503).json({ 
-//         error: 'AI service unavailable',
-//         response: "I'm sorry, but the AI service is currently unavailable."
-//       });
-//     }
-
-//     console.log('Generating examples...');
-
-//     const completion = await groq.chat.completions.create({
-//       messages: [
-//         { 
-//           role: 'system', 
-//           content: SYSTEM_PROMPT + " The user wants practical examples. Provide 2-3 clear, real-world examples that illustrate the concept. Make the examples relevant and easy to understand."
-//         },
-//         { role: 'user', content: `Please provide 2-3 practical examples for this concept: "${lastResponse}"` }
-//       ],
-//       model: 'llama-3.1-8b-instant',
-//       temperature: 0.7,
-//       max_tokens: 400
-//     });
-
-//     const aiResponse = completion.choices[0]?.message?.content;
-
-//     // Save to Supabase if available
-//     if (sessionId && supabase) {
-//       try {
-//         await supabase
-//           .from('conversations')
-//           .insert([
-//             {
-//               session_id: sessionId,
-//               user_message: 'Give me an example',
-//               ai_response: aiResponse,
-//               created_at: new Date().toISOString()
-//             }
-//           ]);
-//       } catch (dbError) {
-//         console.log('Database save skipped:', dbError.message);
-//       }
-//     }
-
-//     res.json({ 
-//       response: aiResponse,
-//       sessionId: sessionId || generateSessionId()
-//     });
-    
-//   } catch (error) {
-//     console.error('Error in /api/example:', error);
-//     res.status(500).json({ 
-//       error: 'Failed to generate examples',
-//       response: "I couldn't find good examples right now. Please try asking your question again."
-//     });
-//   }
-// }
-
-// // Quiz generation endpoint
-// async function handleQuiz(req, res) {
-//   try {
-//     const { topic, sessionId } = req.body;
-    
-//     if (!topic) {
-//       return res.status(400).json({ error: 'No topic provided' });
-//     }
-
-//     // Check if Groq is available
-//     if (!groq) {
-//       return res.status(503).json({ 
-//         error: 'AI service unavailable',
-//         response: "I'm sorry, but the AI service is currently unavailable."
-//       });
-//     }
-
-//     console.log('Generating quiz for topic:', topic);
-
-//     const completion = await groq.chat.completions.create({
-//       messages: [
-//         { 
-//           role: 'system', 
-//           content: `You are a quiz master. Create a multiple-choice quiz question about the given topic. Format your response as JSON with this structure:
-//           {
-//             "question": "The quiz question",
-//             "options": ["Option A", "Option B", "Option C", "Option D"],
-//             "correct": 0,
-//             "explanation": "Brief explanation of why the correct answer is right"
-//           }
-//           Make the question educational and relevant to the topic.`
-//         },
-//         { role: 'user', content: `Create a quiz question about: ${topic}` }
-//       ],
-//       model: 'llama-3.1-8b-instant',
-//       temperature: 0.7,
-//       max_tokens: 300
-//     });
-
-//     const aiResponse = completion.choices[0]?.message?.content;
-
-//     // Try to parse JSON response, fallback to text if needed
-//     let quizData;
-//     try {
-//       quizData = JSON.parse(aiResponse);
-//     } catch (parseError) {
-//       quizData = {
-//         question: `Let's test your knowledge about ${topic}!`,
-//         options: ["I'm ready for a quiz!", "Ask me a question", "Test my understanding", "Challenge me"],
-//         correct: 0,
-//         explanation: "This is a fun way to check your understanding!"
-//       };
-//     }
-
-//     // Save to Supabase if available
-//     if (sessionId && supabase) {
-//       try {
-//         await supabase
-//           .from('conversations')
-//           .insert([
-//             {
-//               session_id: sessionId,
-//               user_message: 'Quiz me',
-//               ai_response: `Quiz: ${quizData.question}\n\nOptions:\nA) ${quizData.options[0]}\nB) ${quizData.options[1]}\nC) ${quizData.options[2]}\nD) ${quizData.options[3]}\n\nCorrect answer: ${quizData.options[quizData.correct]}\nExplanation: ${quizData.explanation}`,
-//               created_at: new Date().toISOString()
-//             }
-//           ]);
-//       } catch (dbError) {
-//         console.log('Database save skipped:', dbError.message);
-//       }
-//     }
-
-//     res.json({ 
-//       response: quizData,
-//       sessionId: sessionId || generateSessionId()
-//     });
-    
-//   } catch (error) {
-//     console.error('Error in /api/quiz:', error);
-//     res.status(500).json({ 
-//       error: 'Failed to generate quiz',
-//       response: {
-//         question: "Let's test your knowledge!",
-//         options: ["Ready for a quiz!", "Ask me anything", "Test my understanding", "Challenge accepted"],
-//         correct: 0,
-//         explanation: "This is a fun way to learn!"
-//       }
-//     });
-//   }
-// }
-
-// // Speech synthesis endpoint
-// async function handleSpeechSynthesis(req, res) {
-//   try {
-//     const { text } = req.body;
-    
-//     if (!text) {
-//       return res.status(400).json({ error: 'No text provided' });
-//     }
-
-//     // If no ElevenLabs API key, use browser TTS
-//     if (!process.env.ELEVENLABS_API_KEY) {
-//       console.log('ElevenLabs: No API key, using browser TTS fallback');
-//       return res.json({ 
-//         audioContent: null,
-//         mimeType: 'audio/mpeg',
-//         message: 'Use browser TTS'
-//       });
-//     }
-
-//     console.log('Synthesizing speech with ElevenLabs...');
-
-//     const response = await axios.post(
-//       `https://api.elevenlabs.io/v1/text-to-speech/${process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM'}`,
-//       {
-//         text: text.substring(0, 5000),
-//         model_id: 'eleven_monolingual_v1',
-//         voice_settings: {
-//           stability: 0.5,
-//           similarity_boost: 0.5
-//         }
-//       },
-//       {
-//         headers: {
-//           'xi-api-key': process.env.ELEVENLABS_API_KEY,
-//           'Content-Type': 'application/json'
-//         },
-//         responseType: 'arraybuffer',
-//         timeout: 30000
-//       }
-//     );
-
-//     const audioBase64 = Buffer.from(response.data).toString('base64');
-    
-//     console.log('Speech synthesized successfully');
-//     res.json({
-//       audioContent: audioBase64,
-//       mimeType: 'audio/mpeg'
-//     });
-
-//   } catch (error) {
-//     console.error('❌ ElevenLabs API error:', error.response?.status, error.response?.data?.detail?.message || error.message);
-    
-//     // Handle specific ElevenLabs errors
-//     if (error.response?.data) {
-//       const buffer = error.response.data;
-//       let errorMessage = 'Unknown ElevenLabs error';
-      
-//       try {
-//         const errorData = JSON.parse(buffer.toString());
-//         errorMessage = errorData.detail?.message || errorData.detail?.status || JSON.stringify(errorData);
-//       } catch (parseError) {
-//         errorMessage = buffer.toString().substring(0, 200);
-//       }
-      
-//       console.error('ElevenLabs error details:', errorMessage);
-      
-//       if (errorMessage.includes('quota_exceeded') || errorMessage.includes('quota')) {
-//         console.log('🎯 ElevenLabs quota exceeded - switching to browser TTS');
-//         return res.json({ 
-//           audioContent: null,
-//           mimeType: 'audio/mpeg',
-//           message: 'Quota exceeded, using browser TTS'
-//         });
-//       }
-//     }
-    
-//     // Fallback to browser TTS for any error
-//     console.log('Using browser TTS fallback due to ElevenLabs error');
-//     res.json({ 
-//       audioContent: null,
-//       mimeType: 'audio/mpeg',
-//       message: 'Using browser TTS fallback'
-//     });
-//   }
-// }
-
-// // Conversation history endpoint
-// async function getConversationHistory(req, res) {
-//   try {
-//     const { sessionId } = req.params;
-    
-//     if (!supabase) {
-//       return res.json({ conversations: [] });
-//     }
-
-//     const { data, error } = await supabase
-//       .from('conversations')
-//       .select('*')
-//       .eq('session_id', sessionId)
-//       .order('created_at', { ascending: true });
-
-//     if (error) throw error;
-
-//     res.json({ conversations: data || [] });
-//   } catch (error) {
-//     console.error('Error fetching conversations:', error);
-//     res.json({ conversations: [] });
-//   }
-// }
-
-// // Health check endpoint
-// function healthCheck(req, res) {
-//   res.json({ 
-//     status: 'OK', 
-//     timestamp: new Date().toISOString(),
-//     services: {
-//       groq: !!process.env.GROQ_API_KEY,
-//       elevenlabs: !!process.env.ELEVENLABS_API_KEY,
-//       supabase: !!process.env.SUPABASE_URL,
-//       voice_commands: true
-//     },
-//     features: {
-//       voice_commands: true,
-//       rephrase: true,
-//       examples: true,
-//       quizzes: true
-//     }
-//   });
-// }
-
-// // Serve frontend
-// function serveFrontend(req, res) {
-//   res.sendFile(path.join(__dirname, 'public', 'index.html'));
-// }
-
-// // Routes
-// app.post('/api/chat', handleChat);
-// app.post('/api/rephrase', handleRephrase);
-// app.post('/api/example', handleExample);
-// app.post('/api/quiz', handleQuiz);
-// app.post('/api/synthesize-speech', handleSpeechSynthesis);
-// app.get('/api/conversations/:sessionId', getConversationHistory);
-// app.get('/api/health', healthCheck);
-// app.get('/', serveFrontend);
-
-// // Start Server
-// app.listen(PORT, () => {
-//   console.log(`🚀 VoiceTutor running on http://localhost:${PORT}`);
-//   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-  
-//   // Log service status
-//   if (!process.env.GROQ_API_KEY) {
-//     console.warn('⚠️  GROQ_API_KEY not found. AI responses will not work.');
-//   } else {
-//     console.log('✅ Groq API key found - AI responses enabled');
-//   }
-  
-//   if (!process.env.ELEVENLABS_API_KEY) {
-//     console.warn('⚠️  ELEVENLABS_API_KEY not found. Using browser TTS fallback.');
-//   } else {
-//     console.log('✅ ElevenLabs API key found - Premium voices enabled');
-//   }
-  
-//   if (!process.env.SUPABASE_URL) {
-//     console.warn('⚠️  Supabase credentials not found. Conversation history disabled.');
-//   } else {
-//     console.log('✅ Supabase connected - Conversation history enabled');
-//   }
-  
-//   console.log('🎯 Voice commands enabled:');
-//   console.log('   • "help" - Show all voice commands');
-//   console.log('   • "repeat" - Repeat last explanation');
-//   console.log('   • "explain differently" - Rephrase concept');
-//   console.log('   • "give me an example" - Get practical examples');
-//   console.log('   • "quiz me" - Start interactive quiz');
-//   console.log('   • "clear chat" - Clear conversation');
-// });
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -1622,13 +45,54 @@ const SYSTEM_PROMPTS = {
 
 1. EXPLAIN concepts clearly and conversationally in 2-3 sentences
 2. BREAK DOWN complex topics into simple, digestible parts
-3. ALWAYS end your response with a relevant follow-up question to test understanding
+3. ALWAYS end by confirming understanding with phrases like "Does this make sense to you?" or "Do you feel like you've got it now?"
 4. USE encouraging and supportive language
 5. ADAPT to the user's learning level
 6. KEEP responses concise for voice interaction
 
 Example format:
-"Great question! [Clear explanation]. Now, to make sure this sticks, [follow-up question]?"`,
+"Great question! [Clear explanation]. Does this make sense to you, or would you like me to explain it differently?"`,
+
+  // Voice-first conversational learning system
+  interactive: `You are VoiceTutor, a conversational AI learning partner designed for voice-first interaction. You create dynamic, Socratic dialogue that goes far beyond rigid text responses.
+
+CORE PHILOSOPHY:
+- You are a conversational partner, not a textbook
+- Every interaction flows naturally like a real conversation
+- You adapt your teaching style to the learner's voice and responses
+- You create genuine teaching moments through dialogue, not data dumps
+- You use voice pacing, tone, and natural flow to convey complex concepts
+
+CONVERSATIONAL TEACHING STYLE:
+1. SPEAK NATURALLY: Use conversational language, not academic bullet points
+2. BUILD ON RESPONSES: Always acknowledge what the learner said before continuing
+3. USE ANALOGIES: Connect complex concepts to familiar experiences
+4. ADAPT PACE: Slow down for difficult concepts, speed up when they're following
+5. CREATE DIALOGUE: Ask follow-up questions that feel natural in conversation
+
+VOICE-FIRST OPTIMIZATION:
+- Write responses as if you're speaking them aloud
+- Use natural speech patterns and transitions
+- Include verbal cues like "Now, here's the interesting part..." or "Let me give you an example..."
+- Vary your sentence length and structure for natural rhythm
+- Use conversational connectors: "So...", "Now...", "Here's the thing...", "What's fascinating is..."
+
+SOCRATIC DIALOGUE APPROACH:
+- Start with what they know or can observe
+- Guide them to discover concepts through questions
+- Build understanding step by step through conversation
+- Use their responses to shape the next part of the explanation
+- Create "aha moments" through guided discovery
+
+RESPONSE STRUCTURE FOR VOICE:
+1. Acknowledge their question with enthusiasm
+2. Connect to their world or experience
+3. Explain through conversation, not lists
+4. Use analogies and examples naturally
+5. Check understanding through natural questions
+6. Build toward deeper concepts through dialogue
+
+TONE: Conversational, enthusiastic, patient, curious. Like talking to a knowledgeable friend who loves teaching.`,
 
   // Physics Tutor
   physics: `You are Dr. Sarah Chen, a passionate Physics Professor with 15 years of teaching experience. Your expertise spans classical mechanics, thermodynamics, electromagnetism, and quantum physics.
@@ -1864,15 +328,42 @@ function getSystemPrompt(userMessage) {
   return SYSTEM_PROMPTS[detectedSubject];
 }
 
+// Conversation state management
+const conversationStates = new Map();
+
 // Utility Functions
 function generateSessionId() {
   return 'session_' + Math.random().toString(36).substr(2, 9);
 }
 
+function getConversationState(sessionId) {
+  if (!conversationStates.has(sessionId)) {
+    conversationStates.set(sessionId, {
+      mode: 'interactive', // 'interactive' or 'regular'
+      currentTopic: null,
+      questionHistory: [],
+      userResponses: [],
+      learningLevel: 'beginner', // 'beginner', 'intermediate', 'advanced'
+      personalizedContext: '',
+      waitingForResponse: false,
+      lastQuestion: null,
+      lastResponse: null
+    });
+  }
+  return conversationStates.get(sessionId);
+}
+
+function updateConversationState(sessionId, updates) {
+  const state = getConversationState(sessionId);
+  Object.assign(state, updates);
+  conversationStates.set(sessionId, state);
+  return state;
+}
+
 // Route Handlers
 async function handleChat(req, res) {
   try {
-    const { message, sessionId } = req.body;
+    const { message, sessionId, isResponse = false } = req.body;
     
     if (!message) {
       return res.status(400).json({ error: 'No message provided' });
@@ -1886,17 +377,66 @@ async function handleChat(req, res) {
       });
     }
 
-    console.log('Processing question:', message);
+    console.log('Processing message:', message, 'isResponse:', isResponse);
 
-    // Get AI response from Groq with subject-specific prompt
-    const systemPrompt = getSystemPrompt(message);
+    const currentSessionId = sessionId || generateSessionId();
+    const state = getConversationState(currentSessionId);
+
+    let systemPrompt;
+    let userMessage = message;
+
+    if (isResponse && state.waitingForResponse) {
+      // User is responding to a question
+      console.log('Processing user response to question');
+      
+      // Update state with user response
+      state.userResponses.push(message);
+      state.waitingForResponse = false;
+      
+      // Create personalized context from user responses
+      const recentResponses = state.userResponses.slice(-3).join(' ');
+      state.personalizedContext = `User's recent responses: ${recentResponses}`;
+      
+      // Use interactive prompt with user's response context
+      systemPrompt = SYSTEM_PROMPTS.interactive + `\n\nCONTEXT: You just asked: "${state.lastQuestion}"\nUser responded: "${message}"\nPersonalized context: ${state.personalizedContext}\n\nNow acknowledge their response, explain the concept using their answer as context, and decide whether to ask a follow-up question or provide a complete explanation.`;
+      
+      userMessage = `User response: "${message}"`;
+      
+    } else {
+      // New question or topic
+      console.log('Processing new question/topic');
+      
+      // Detect if this is a new topic
+      const detectedSubject = detectSubject(message);
+      if (detectedSubject !== 'default') {
+        state.currentTopic = detectedSubject;
+        state.questionHistory = [];
+        state.userResponses = [];
+        state.personalizedContext = '';
+      }
+      
+      // Determine if this question would benefit from conversational dialogue
+      const shouldUseDialogue = shouldUseConversationalDialogue(message, state);
+      
+      if (shouldUseDialogue) {
+        // Use conversational dialogue approach
+        systemPrompt = SYSTEM_PROMPTS.interactive + `\n\nCONTEXT: User is asking about: "${message}"\nCurrent topic: ${state.currentTopic || 'general'}\nLearning level: ${state.learningLevel}\nPersonalized context: ${state.personalizedContext}\n\nThis question would benefit from conversational dialogue. Start with a natural question that connects to their experience or world, then wait for their response before continuing the explanation. Make it feel like a natural conversation.`;
+        state.waitingForResponse = true;
+        state.lastQuestion = message;
+      } else {
+        // Use conversational but more direct approach
+        systemPrompt = SYSTEM_PROMPTS.interactive + `\n\nCONTEXT: User is asking about: "${message}"\nCurrent topic: ${state.currentTopic || 'general'}\nLearning level: ${state.learningLevel}\nPersonalized context: ${state.personalizedContext}\n\nProvide a conversational, engaging explanation that flows naturally. Use analogies and examples, and only ask a follow-up question if it would genuinely deepen understanding through natural dialogue.`;
+        state.waitingForResponse = false;
+      }
+    }
+
     const completion = await groq.chat.completions.create({
       messages: [
         { 
           role: 'system', 
           content: systemPrompt
         },
-        { role: 'user', content: message }
+        { role: 'user', content: userMessage }
       ],
       model: 'llama-3.1-8b-instant',
       temperature: 0.7,
@@ -1904,15 +444,21 @@ async function handleChat(req, res) {
     });
 
     const aiResponse = completion.choices[0]?.message?.content;
+    
+    // Update state
+    state.lastResponse = aiResponse;
+    if (!isResponse) {
+      state.questionHistory.push(message);
+    }
 
     // Save to Supabase if available
-    if (sessionId && supabase) {
+    if (currentSessionId && supabase) {
       try {
         await supabase
           .from('conversations')
           .insert([
             {
-              session_id: sessionId,
+              session_id: currentSessionId,
               user_message: message,
               ai_response: aiResponse,
               created_at: new Date().toISOString()
@@ -1926,7 +472,13 @@ async function handleChat(req, res) {
 
     res.json({ 
       response: aiResponse,
-      sessionId: sessionId || generateSessionId()
+      sessionId: currentSessionId,
+      waitingForResponse: state.waitingForResponse,
+      conversationState: {
+        mode: state.mode,
+        currentTopic: state.currentTopic,
+        learningLevel: state.learningLevel
+      }
     });
     
   } catch (error) {
@@ -1934,6 +486,326 @@ async function handleChat(req, res) {
     res.status(500).json({ 
       error: 'Failed to process question',
       details: error.message 
+    });
+  }
+}
+
+// Helper function to detect subject
+function detectSubject(message) {
+  const messageLower = message.toLowerCase();
+  
+  const subjects = {
+    physics: ['physics', 'force', 'energy', 'motion', 'gravity', 'electricity', 'magnetism', 'quantum', 'thermodynamics', 'mechanics'],
+    mathematics: ['math', 'algebra', 'calculus', 'geometry', 'trigonometry', 'equation', 'function', 'derivative', 'integral', 'statistics'],
+    history: ['history', 'war', 'revolution', 'ancient', 'medieval', 'renaissance', 'world war', 'civilization', 'empire', 'historical'],
+    chemistry: ['chemistry', 'atom', 'molecule', 'reaction', 'element', 'compound', 'acid', 'base', 'bond', 'periodic table'],
+    biology: ['biology', 'cell', 'dna', 'evolution', 'ecosystem', 'organism', 'photosynthesis', 'respiration', 'genetics', 'anatomy'],
+    literature: ['literature', 'poetry', 'novel', 'author', 'theme', 'character', 'symbolism', 'metaphor', 'shakespeare', 'writing']
+  };
+  
+  for (const [subject, keywords] of Object.entries(subjects)) {
+    if (keywords.some(keyword => messageLower.includes(keyword))) {
+      return subject;
+    }
+  }
+  
+  return 'default';
+}
+
+// Helper function to determine conversational approach
+function shouldUseConversationalDialogue(message, state) {
+  const messageLower = message.toLowerCase();
+  
+  // Always use conversational dialogue for complex or abstract concepts
+  const complexConcepts = [
+    'quantum', 'entanglement', 'relativity', 'evolution', 'photosynthesis',
+    'democracy', 'philosophy', 'psychology', 'economics', 'literature',
+    'metaphor', 'symbolism', 'theme', 'theory', 'principle', 'concept'
+  ];
+  
+  // Use dialogue for questions that show curiosity or confusion
+  const curiosityPatterns = [
+    'i don\'t understand', 'confused', 'unclear', 'not sure', 'help me understand',
+    'why does', 'why is', 'how come', 'what\'s the difference', 'compare',
+    'i think', 'i believe', 'in my opinion', 'i feel like', 'like i\'m',
+    'explain like i\'m', 'help me understand', 'i\'m struggling with'
+  ];
+  
+  // Use dialogue for relationship or process questions
+  const relationshipPatterns = [
+    'relationship between', 'connection', 'cause and effect', 'process', 'mechanism',
+    'how does this work', 'what happens when', 'if this then what'
+  ];
+  
+  // Enhanced: Use dialogue for most questions to increase interactivity
+  const interactivePatterns = [
+    'what is', 'what are', 'how do', 'how does', 'can you explain',
+    'tell me about', 'describe', 'define', 'meaning of'
+  ];
+  
+  // Check for complex concepts first
+  if (complexConcepts.some(concept => messageLower.includes(concept))) {
+    return true;
+  }
+  
+  // Check for curiosity or confusion
+  if (curiosityPatterns.some(pattern => messageLower.includes(pattern))) {
+    return true;
+  }
+  
+  // Check for relationship/process questions
+  if (relationshipPatterns.some(pattern => messageLower.includes(pattern))) {
+    return true;
+  }
+  
+  // Enhanced: Use dialogue for common question patterns
+  if (interactivePatterns.some(pattern => messageLower.includes(pattern))) {
+    return true;
+  }
+  
+  // Use dialogue if user has been asking multiple questions (shows engagement)
+  if (state.questionHistory.length > 1) {
+    return true;
+  }
+  
+  // Enhanced: Use dialogue more often for beginners and intermediate learners
+  if (state.learningLevel === 'beginner' || state.learningLevel === 'intermediate') {
+    return true;
+  }
+  
+  // Enhanced: Default to interactive for most questions
+  return true;
+}
+
+// NEW: Get conversation state endpoint
+async function getConversationStateEndpoint(req, res) {
+  try {
+    const { sessionId } = req.params;
+    
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Session ID required' });
+    }
+
+    const state = getConversationState(sessionId);
+    
+    res.json({
+      sessionId,
+      state: {
+        mode: state.mode,
+        currentTopic: state.currentTopic,
+        learningLevel: state.learningLevel,
+        waitingForResponse: state.waitingForResponse,
+        lastQuestion: state.lastQuestion,
+        questionCount: state.questionHistory.length,
+        responseCount: state.userResponses.length
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error getting conversation state:', error);
+    res.status(500).json({ 
+      error: 'Failed to get conversation state',
+      details: error.message 
+    });
+  }
+}
+
+// NEW: Update learning mode endpoint
+async function updateLearningMode(req, res) {
+  try {
+    const { sessionId, mode, learningLevel } = req.body;
+    
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Session ID required' });
+    }
+
+    const updates = {};
+    if (mode) updates.mode = mode;
+    if (learningLevel) updates.learningLevel = learningLevel;
+    
+    const state = updateConversationState(sessionId, updates);
+    
+    res.json({
+      sessionId,
+      state: {
+        mode: state.mode,
+        learningLevel: state.learningLevel,
+        currentTopic: state.currentTopic
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error updating learning mode:', error);
+    res.status(500).json({ 
+      error: 'Failed to update learning mode',
+      details: error.message 
+    });
+  }
+}
+
+// NEW: Reset conversation endpoint
+async function resetConversation(req, res) {
+  try {
+    const { sessionId } = req.body;
+    
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Session ID required' });
+    }
+
+    // Reset the conversation state
+    conversationStates.set(sessionId, {
+      mode: 'interactive',
+      currentTopic: null,
+      questionHistory: [],
+      userResponses: [],
+      learningLevel: 'beginner',
+      personalizedContext: '',
+      waitingForResponse: false,
+      lastQuestion: null,
+      lastResponse: null
+    });
+    
+    res.json({
+      sessionId,
+      message: 'Conversation reset successfully',
+      state: getConversationState(sessionId)
+    });
+    
+  } catch (error) {
+    console.error('Error resetting conversation:', error);
+    res.status(500).json({ 
+      error: 'Failed to reset conversation',
+      details: error.message 
+    });
+  }
+}
+
+// NEW: Interactive spoken quiz endpoint
+async function startInteractiveQuiz(req, res) {
+  try {
+    const { topic, sessionId } = req.body;
+    
+    if (!topic) {
+      return res.status(400).json({ error: 'No topic provided' });
+    }
+
+    if (!groq) {
+      return res.status(503).json({ 
+        error: 'AI service unavailable',
+        response: "I'm sorry, but the AI service is currently unavailable."
+      });
+    }
+
+    console.log('Starting interactive quiz for topic:', topic);
+
+    const quizPrompt = `Create an interactive, conversational quiz about ${topic}. This is for voice interaction, so make it feel like a natural conversation. 
+
+QUIZ STRUCTURE:
+1. Start with an engaging introduction to the topic
+2. Ask a question that connects to their experience
+3. Wait for their response
+4. Provide feedback and explanation based on their answer
+5. Ask a follow-up question that builds on their response
+6. Continue the dialogue naturally
+
+Make it conversational, not like a traditional quiz. Use phrases like "Let me ask you something..." or "Here's something interesting..."`;
+
+    const completion = await groq.chat.completions.create({
+      messages: [
+        { 
+          role: 'system', 
+          content: SYSTEM_PROMPTS.interactive + `\n\nYou are now conducting an interactive, spoken quiz. Make it feel like a natural conversation where you're exploring the topic together through questions and dialogue.`
+        },
+        { role: 'user', content: quizPrompt }
+      ],
+      model: 'llama-3.1-8b-instant',
+      temperature: 0.8,
+      max_tokens: 400
+    });
+
+    const quizResponse = completion.choices[0]?.message?.content;
+
+    // Update conversation state for quiz mode
+    const state = getConversationState(sessionId);
+    state.waitingForResponse = true;
+    state.lastQuestion = `Interactive quiz about ${topic}`;
+    state.currentTopic = topic;
+
+    res.json({ 
+      response: quizResponse,
+      sessionId: sessionId || generateSessionId(),
+      waitingForResponse: true,
+      quizMode: true
+    });
+    
+  } catch (error) {
+    console.error('Error starting interactive quiz:', error);
+    res.status(500).json({ 
+      error: 'Failed to start quiz',
+      response: "I couldn't start a quiz right now. Please try asking your question again."
+    });
+  }
+}
+
+// NEW: Process quiz response endpoint
+async function processQuizResponse(req, res) {
+  try {
+    const { response, sessionId } = req.body;
+    
+    if (!response) {
+      return res.status(400).json({ error: 'No response provided' });
+    }
+
+    if (!groq) {
+      return res.status(503).json({ 
+        error: 'AI service unavailable',
+        response: "I'm sorry, but the AI service is currently unavailable."
+      });
+    }
+
+    const state = getConversationState(sessionId);
+    
+    if (!state.waitingForResponse) {
+      return res.status(400).json({ error: 'Not waiting for a response' });
+    }
+
+    console.log('Processing quiz response:', response);
+
+    const feedbackPrompt = `The user just responded to your quiz question with: "${response}"
+
+Provide conversational feedback on their answer, then ask a follow-up question that builds on their response. Make it feel like a natural conversation where you're exploring the topic together.`;
+
+    const completion = await groq.chat.completions.create({
+      messages: [
+        { 
+          role: 'system', 
+          content: SYSTEM_PROMPTS.interactive + `\n\nYou are continuing an interactive quiz conversation. Provide feedback on their answer and ask a follow-up question that deepens their understanding.`
+        },
+        { role: 'user', content: feedbackPrompt }
+      ],
+      model: 'llama-3.1-8b-instant',
+      temperature: 0.8,
+      max_tokens: 400
+    });
+
+    const feedbackResponse = completion.choices[0]?.message?.content;
+
+    // Update state
+    state.userResponses.push(response);
+    state.waitingForResponse = true;
+
+    res.json({ 
+      response: feedbackResponse,
+      sessionId: sessionId,
+      waitingForResponse: true,
+      quizMode: true
+    });
+    
+  } catch (error) {
+    console.error('Error processing quiz response:', error);
+    res.status(500).json({ 
+      error: 'Failed to process quiz response',
+      response: "I couldn't process your response right now. Please try again."
     });
   }
 }
@@ -2078,7 +950,7 @@ Please provide a clear, practical example that illustrates this concept. Make it
 
 async function handleSpeechSynthesis(req, res) {
   try {
-    const { text } = req.body;
+    const { text, speed = 1.0 } = req.body;
     
     if (!text) {
       return res.status(400).json({ error: 'No text provided' });
@@ -2119,9 +991,11 @@ async function handleSpeechSynthesis(req, res) {
     const audioBase64 = Buffer.from(response.data).toString('base64');
     
     console.log('Speech synthesized successfully');
-    res.json({
+    re
+    s.json({
       audioContent: audioBase64,
-      mimeType: 'audio/mpeg'
+      mimeType: 'audio/mpeg',
+      speed: speed
     });
 
   } catch (error) {
@@ -2207,6 +1081,11 @@ app.post('/api/rephrase', handleRephrase); // NEW: Rephrase endpoint
 app.post('/api/example', handleExample);   // NEW: Example endpoint
 app.post('/api/synthesize-speech', handleSpeechSynthesis);
 app.get('/api/conversations/:sessionId', getConversationHistory);
+app.get('/api/conversation-state/:sessionId', getConversationStateEndpoint); // NEW: Get conversation state
+app.post('/api/update-learning-mode', updateLearningMode); // NEW: Update learning mode
+app.post('/api/reset-conversation', resetConversation); // NEW: Reset conversation
+app.post('/api/start-quiz', startInteractiveQuiz); // NEW: Start interactive quiz
+app.post('/api/quiz-response', processQuizResponse); // NEW: Process quiz response
 app.get('/api/health', healthCheck);
 app.get('/', serveFrontend);
 
@@ -2234,4 +1113,15 @@ app.listen(PORT, () => {
   console.log('✅ Additional endpoints loaded:');
   console.log('   - POST /api/rephrase (rephrase last explanation)');
   console.log('   - POST /api/example (get practical example)');
+  console.log('   - GET /api/conversation-state/:sessionId (get conversation state)');
+  console.log('   - POST /api/update-learning-mode (update learning mode)');
+  console.log('   - POST /api/reset-conversation (reset conversation)');
+  console.log('   - POST /api/start-quiz (start interactive spoken quiz)');
+  console.log('   - POST /api/quiz-response (process quiz responses)');
+  console.log('🎯 VoiceTutor: Conversational AI Learning Partner');
+  console.log('   • Voice-first conversational learning experience');
+  console.log('   • Dynamic Socratic dialogue beyond rigid text responses');
+  console.log('   • Interactive spoken quizzes that adapt to responses');
+  console.log('   • Natural conversation flow with pacing and tone');
+  console.log('   • Real-time knowledge gap detection and adaptation');
 });

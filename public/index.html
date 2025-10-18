@@ -20,17 +20,22 @@
                             <i class="bi bi-mic-fill me-2"></i>VoiceTutor
                         </h1>
                         <div class="text-end">
-                            <div class="mb-2">
-                                <select id="languageSelect" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                            <div class="mb-2 d-flex gap-2 justify-content-end">
+                                <select id="languageSelect" class="form-select form-select-sm" style="width: auto;">
                                     <option value="en-US">🇺🇸 English</option>
                                     <option value="es-ES">🇪🇸 Español</option>
                                     <option value="fr-FR">🇫🇷 Français</option>
                                     <option value="de-DE">🇩🇪 Deutsch</option>
                                     <option value="zh-CN">🇨🇳 中文</option>
                                 </select>
+                                <select id="voiceSpeedSelect" class="form-select form-select-sm" style="width: auto;">
+                                    <option value="0.5">🐌 0.5x</option>
+                                    <option value="1.0" selected>🗣️ 1.0x</option>
+                                    <option value="1.5">⚡ 1.5x</option>
+                                    <option value="2.0">🚀 2.0x</option>
+                                    <option value="3.0">💨 3.0x</option>
+                                </select>
                             </div>
-                            <small class="d-block">Session: <span id="sessionId" class="badge bg-light text-dark">Loading...</span></small>
-                        </div>
                     </div>
                 </header>
 
@@ -97,14 +102,33 @@
                     </div>
                 </div>
 
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <h6 class="card-title">
+                            <i class="bi bi-chat-dots me-2"></i>Conversational Learning
+                        </h6>
+                        <div class="small text-muted">
+                            <p><strong>VoiceTutor goes beyond rigid text responses:</strong></p>
+                            <ul class="small">
+                                <li>🗣️ <strong> Voice-first:</strong> Natural spoken conversations</li>
+                                <li>🧠 <strong> Socratic dialogue:</strong> Guided discovery through questions</li>
+                                <li>🎯 <strong> Adaptive quizzes:</strong> Interactive spoken assessments</li>
+                                <li>💡 <strong> Real understanding:</strong> Not just data dumps</li>
+                                <li>🔄 <strong> Dynamic flow:</strong> Adapts to your responses</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="card">
                     <div class="card-body">
                         <h6 class="card-title">Tips:</h6>
                         <ul class="small">
-                            <li>Speak clearly and at a normal pace</li>
-                            <li>Ask specific questions for better answers</li>
-                            <li>Use voice commands for quick actions</li>
-                            <li>Works best in Chrome browser</li>
+                            <li>🗣️ Speak naturally - like talking to a friend</li>
+                            <li>❓ Ask complex questions: "Explain quantum entanglement like I'm 10"</li>
+                            <li>🎯 Try "quiz me about [topic]" for interactive learning</li>
+                            <li>💬 Engage in dialogue - I'll ask questions back</li>
+                            <li>🌐 Works best in Chrome browser</li>
                         </ul>
                     </div>
                 </div>
